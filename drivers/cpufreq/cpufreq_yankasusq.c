@@ -3,6 +3,8 @@
  *
  *  Modified : Jean-Pierre Rasquin <yank555.lu@gmail.com>
  *
+ *  Introducing cpu frequency limitations based on the number of cores online.
+ * 
  *  Based on pegasusq governor
  *  Copyright (C)  2011 Samsung Electronics co. ltd
  *    ByungChang Cha <bc.cha@samsung.com>
@@ -161,6 +163,10 @@ static unsigned int get_nr_run_avg(void)
 #define DEF_MIN_CPU_LOCK			(0)
 #define DEF_CPU_UP_FREQ				(500000)
 #define DEF_CPU_DOWN_FREQ			(200000)
+#define DEF_CPU_MAX_FREQ_1			(1000000) /* Yank555.lu : CPU freq. limit running on 1 core */
+#define DEF_CPU_MAX_FREQ_2			(1100000) /* Yank555.lu : CPU freq. limit running on 2 cores */
+#define DEF_CPU_MAX_FREQ_3			(1200000) /* Yank555.lu : CPU freq. limit running on 3 cores */
+#define DEF_CPU_MAX_FREQ_4			(1400000) /* Yank555.lu : CPU freq. limit running on 4 cores */
 #define DEF_UP_NR_CPUS				(1)
 #define DEF_CPU_UP_RATE				(10)
 #define DEF_CPU_DOWN_RATE			(20)
@@ -177,25 +183,25 @@ static unsigned int get_nr_run_avg(void)
 
 #ifdef CONFIG_MACH_MIDAS
 static int hotplug_rq[4][2] = {
-	{0, 200}, {200, 400}, {400, 600}, {600, 0}
+	{0, 350}, {350, 400}, {400, 500}, {500, 0}
 };
 
 static int hotplug_freq[4][2] = {
-	{0, 1200000},
-	{900000, 1200000},
-	{900000, 1200000},
-	{900000, 0}
+	{0, 900000},
+	{800000, 1000000},
+	{900000, 1100000},
+	{1000000, 0}
 };
 #else
 static int hotplug_rq[4][2] = {
-	{0, 200}, {200, 400}, {400, 600}, {600, 0}
+	{0, 350}, {350, 400}, {400, 500}, {500, 0}
 };
 
 static int hotplug_freq[4][2] = {
-	{0, 1200000},
-	{900000, 1200000},
-	{900000, 1200000},
-	{900000, 0}
+	{0, 900000},
+	{800000, 1000000},
+	{900000, 1100000},
+	{1000000, 0}
 };
 #endif
 
@@ -260,6 +266,11 @@ static struct dbs_tuners {
 	unsigned int cpu_down_rate;
 	unsigned int cpu_up_freq;
 	unsigned int cpu_down_freq;
+	unsigned int cpu_max_freq_current; /* Yank555.lu : Current CPU freq. limit */
+	unsigned int cpu_max_freq_1;       /* Yank555.lu : CPU freq. limit running on 1 core */
+	unsigned int cpu_max_freq_2;       /* Yank555.lu : CPU freq. limit running on 2 cores */
+	unsigned int cpu_max_freq_3;       /* Yank555.lu : CPU freq. limit running on 3 cores */
+	unsigned int cpu_max_freq_4;       /* Yank555.lu : CPU freq. limit running on 4 cores */
 	unsigned int up_nr_cpus;
 	unsigned int max_cpu_lock;
 	unsigned int min_cpu_lock;
@@ -280,6 +291,11 @@ static struct dbs_tuners {
 	.cpu_down_rate = DEF_CPU_DOWN_RATE,
 	.cpu_up_freq = DEF_CPU_UP_FREQ,
 	.cpu_down_freq = DEF_CPU_DOWN_FREQ,
+	.cpu_max_freq_current = DEF_CPU_MAX_FREQ_4, /* Yank555.lu : Current CPU freq. limit set at 4 cores level */
+	.cpu_max_freq_1 = DEF_CPU_MAX_FREQ_1,       /* Yank555.lu : CPU freq. limit running on 1 core */
+	.cpu_max_freq_2 = DEF_CPU_MAX_FREQ_2,       /* Yank555.lu : CPU freq. limit running on 2 cores */
+	.cpu_max_freq_3 = DEF_CPU_MAX_FREQ_3,       /* Yank555.lu : CPU freq. limit running on 3 cores */
+	.cpu_max_freq_4 = DEF_CPU_MAX_FREQ_4,       /* Yank555.lu : CPU freq. limit running on 4 cores */
 	.up_nr_cpus = DEF_UP_NR_CPUS,
 	.max_cpu_lock = DEF_MAX_CPU_LOCK,
 	.min_cpu_lock = DEF_MIN_CPU_LOCK,
@@ -289,7 +305,6 @@ static struct dbs_tuners {
 	.early_suspend = -1,
 #endif
 };
-
 
 /*
  * CPU hotplug lock interface
@@ -479,6 +494,11 @@ show_one(cpu_up_rate, cpu_up_rate);
 show_one(cpu_down_rate, cpu_down_rate);
 show_one(cpu_up_freq, cpu_up_freq);
 show_one(cpu_down_freq, cpu_down_freq);
+show_one(cpu_max_freq_current, cpu_max_freq_current); /* Yank555.lu : Current CPU freq. limit */
+show_one(cpu_max_freq_1, cpu_max_freq_1);             /* Yank555.lu : CPU freq. limit running on 1 core */
+show_one(cpu_max_freq_2, cpu_max_freq_2);             /* Yank555.lu : CPU freq. limit running on 2 cores */
+show_one(cpu_max_freq_3, cpu_max_freq_3);             /* Yank555.lu : CPU freq. limit running on 3 cores */
+show_one(cpu_max_freq_4, cpu_max_freq_4);             /* Yank555.lu : CPU freq. limit running on 4 cores */
 show_one(up_nr_cpus, up_nr_cpus);
 show_one(max_cpu_lock, max_cpu_lock);
 show_one(min_cpu_lock, min_cpu_lock);
@@ -718,6 +738,133 @@ static ssize_t store_cpu_down_freq(struct kobject *a, struct attribute *b,
 	return count;
 }
 
+/* Yank555.lu : Current CPU freq. limit */
+static ssize_t store_cpu_max_freq_current(struct kobject *a, struct attribute *b,
+				    const char *buf, size_t count)
+{
+	return -EINVAL; /* No change allowed here */
+}
+
+/* Yank555.lu : CPU freq. limit running on 1 core */
+static ssize_t store_cpu_max_freq_1(struct kobject *a, struct attribute *b,
+				    const char *buf, size_t count)
+{
+	unsigned int input;
+	struct cpufreq_frequency_table *table;
+	unsigned int i = 0;
+	int ret;
+
+	ret = sscanf(buf, "%u", &input);
+	if (ret != 1)
+		return -EINVAL;
+
+	table = cpufreq_frequency_get_table(0);
+
+	if (!table) {
+		return -EINVAL;
+	} else {
+		for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+			if (table[i].frequency == input)
+				dbs_tuners_ins.cpu_max_freq_1 = input;
+	}
+
+	/* If the current number of online cores is 1, update current CPU freq. limit */
+	if (num_online_cpus() == 1)
+		dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_1;
+
+	return count;
+}
+
+/* Yank555.lu : CPU freq. limit running on 2 cores */
+static ssize_t store_cpu_max_freq_2(struct kobject *a, struct attribute *b,
+				    const char *buf, size_t count)
+{
+	unsigned int input;
+	struct cpufreq_frequency_table *table;
+	unsigned int i = 0;
+	int ret;
+
+	ret = sscanf(buf, "%u", &input);
+	if (ret != 1)
+		return -EINVAL;
+
+	table = cpufreq_frequency_get_table(0);
+
+	if (!table) {
+		return -EINVAL;
+	} else {
+		for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+			if (table[i].frequency == input)
+				dbs_tuners_ins.cpu_max_freq_2 = input;
+	}
+
+	/* If the current number of online cores is 2, update current CPU freq. limit */
+	if (num_online_cpus() == 2)
+		dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_2;
+
+	return count;				
+}
+
+/* Yank555.lu : CPU freq. limit running on 3 cores */
+static ssize_t store_cpu_max_freq_3(struct kobject *a, struct attribute *b,
+				    const char *buf, size_t count)
+{
+	unsigned int input;
+	struct cpufreq_frequency_table *table;
+	unsigned int i = 0;
+	int ret;
+
+	ret = sscanf(buf, "%u", &input);
+	if (ret != 1)
+		return -EINVAL;
+
+	table = cpufreq_frequency_get_table(0);
+
+	if (!table) {
+		return -EINVAL;
+	} else {
+		for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+			if (table[i].frequency == input)
+				dbs_tuners_ins.cpu_max_freq_3 = input;
+	}
+
+	/* If the current number of online cores is 3, update current CPU freq. limit */
+	if (num_online_cpus() == 3)
+		dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_3;
+
+	return count;				
+}
+
+/* Yank555.lu : CPU freq. limit running on 4 cores */
+static ssize_t store_cpu_max_freq_4(struct kobject *a, struct attribute *b,
+				    const char *buf, size_t count)
+{
+	unsigned int input;
+	struct cpufreq_frequency_table *table;
+	unsigned int i = 0;
+	int ret;
+
+	ret = sscanf(buf, "%u", &input);
+	if (ret != 1)
+		return -EINVAL;
+
+	table = cpufreq_frequency_get_table(0);
+
+	if (!table) {
+		return -EINVAL;
+	} else {
+		for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+			if (table[i].frequency == input)
+				dbs_tuners_ins.cpu_max_freq_4 = input;
+	}
+
+	/* If the current number of online cores is 4, update current CPU freq. limit */
+	if (num_online_cpus() == 4)
+		dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_4;
+
+	return count;				
+}
+
 static ssize_t store_up_nr_cpus(struct kobject *a, struct attribute *b,
 				const char *buf, size_t count)
 {
@@ -813,6 +960,11 @@ define_one_global_rw(cpu_up_rate);
 define_one_global_rw(cpu_down_rate);
 define_one_global_rw(cpu_up_freq);
 define_one_global_rw(cpu_down_freq);
+define_one_global_rw(cpu_max_freq_current); /* Yank555.lu : Current CPU freq. limit (should be ro, but nevermind for now) */
+define_one_global_rw(cpu_max_freq_1); /* Yank555.lu : CPU freq. limit running on 1 core */
+define_one_global_rw(cpu_max_freq_2); /* Yank555.lu : CPU freq. limit running on 2 core */
+define_one_global_rw(cpu_max_freq_3); /* Yank555.lu : CPU freq. limit running on 3 core */
+define_one_global_rw(cpu_max_freq_4); /* Yank555.lu : CPU freq. limit running on 4 core */
 define_one_global_rw(up_nr_cpus);
 define_one_global_rw(max_cpu_lock);
 define_one_global_rw(min_cpu_lock);
@@ -832,6 +984,11 @@ static struct attribute *dbs_attributes[] = {
 	&cpu_down_rate.attr,
 	&cpu_up_freq.attr,
 	&cpu_down_freq.attr,
+	&cpu_max_freq_current.attr, /* Yank555.lu : Current CPU freq. limit */
+	&cpu_max_freq_1.attr, /* Yank555.lu : CPU freq. limit running on 1 core */
+	&cpu_max_freq_2.attr, /* Yank555.lu : CPU freq. limit running on 2 cores */
+	&cpu_max_freq_3.attr, /* Yank555.lu : CPU freq. limit running on 3 cores */
+	&cpu_max_freq_4.attr, /* Yank555.lu : CPU freq. limit running on 4 cores */
 	&up_nr_cpus.attr,
 	/* priority: hotplug_lock > max_cpu_lock > min_cpu_lock
 	   Exception: hotplug_lock on early_suspend uses min_cpu_lock */
@@ -890,6 +1047,18 @@ static void cpu_up_work(struct work_struct *work)
 		printk(KERN_ERR "CPU_UP %d\n", cpu);
 		cpu_up(cpu);
 	}
+
+	/* Yank555.lu : Store current desired CPU freq. limit based on number online cores */
+	switch (num_online_cpus()) {
+		case 1 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_1;
+				break;
+		case 2 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_2;
+				break;
+		case 3 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_3;
+				break;
+		case 4 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_4;
+				break;
+	}
 }
 
 static void cpu_down_work(struct work_struct *work)
@@ -909,6 +1078,18 @@ static void cpu_down_work(struct work_struct *work)
 		cpu_down(cpu);
 		if (--nr_down == 0)
 			break;
+	}
+
+	/* Yank555.lu : Store current desired CPU freq. limit based on number online cores */
+	switch (num_online_cpus()) {
+		case 1 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_1;
+				break;
+		case 2 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_2;
+				break;
+		case 3 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_3;
+				break;
+		case 4 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_4;
+				break;
 	}
 }
 
@@ -1152,9 +1333,10 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 	if (max_load_freq > up_threshold * policy->cur) {
 		int inc = (policy->max * dbs_tuners_ins.freq_step) / 100;
-		int target = min(policy->max, policy->cur + inc);
+		/* Yank555.lu : Keep CPU freq. to the current CPU freq. max */
+		int target = min(min(dbs_tuners_ins.cpu_max_freq_current, policy->max), policy->cur + inc);
 		/* If switching to max speed, apply sampling_down_factor */
-		if (policy->cur < policy->max && target == policy->max)
+		if (policy->cur < min(dbs_tuners_ins.cpu_max_freq_current, policy->max) && target == min(dbs_tuners_ins.cpu_max_freq_current, policy->max))
 			this_dbs_info->rate_mult =
 				dbs_tuners_ins.sampling_down_factor;
 		dbs_freq_increase(policy, target);
