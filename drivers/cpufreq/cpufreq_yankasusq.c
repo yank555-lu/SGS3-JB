@@ -160,6 +160,7 @@ static unsigned int get_nr_run_avg(void)
 #define MAX_HOTPLUG_RATE			(40u)
 
 #define DEF_MAX_CPU_LOCK			(0)
+#define DEF_MAX_CPU_LOCK_STDBY			(1)       /* Yank555.lu : Maximum numbers of cores online when screen off */
 #define DEF_MIN_CPU_LOCK			(0)
 #define DEF_CPU_UP_FREQ				(500000)
 #define DEF_CPU_DOWN_FREQ			(200000)
@@ -167,6 +168,7 @@ static unsigned int get_nr_run_avg(void)
 #define DEF_CPU_MAX_FREQ_2			(1100000) /* Yank555.lu : CPU freq. limit running on 2 cores */
 #define DEF_CPU_MAX_FREQ_3			(1200000) /* Yank555.lu : CPU freq. limit running on 3 cores */
 #define DEF_CPU_MAX_FREQ_4			(1400000) /* Yank555.lu : CPU freq. limit running on 4 cores */
+#define DEF_CPU_MAX_FREQ_STDBY			(800000)  /* Yank555.lu : CPU freq. limit when screen off */
 #define DEF_UP_NR_CPUS				(1)
 #define DEF_CPU_UP_RATE				(10)
 #define DEF_CPU_DOWN_RATE			(20)
@@ -183,7 +185,7 @@ static unsigned int get_nr_run_avg(void)
 
 #ifdef CONFIG_MACH_MIDAS
 static int hotplug_rq[4][2] = {
-	{0, 350}, {350, 400}, {400, 500}, {500, 0}
+	{0, 375}, {375, 425}, {425, 500}, {500, 0}
 };
 
 static int hotplug_freq[4][2] = {
@@ -194,7 +196,7 @@ static int hotplug_freq[4][2] = {
 };
 #else
 static int hotplug_rq[4][2] = {
-	{0, 350}, {350, 400}, {400, 500}, {500, 0}
+	{0, 375}, {375, 425}, {425, 500}, {500, 0}
 };
 
 static int hotplug_freq[4][2] = {
@@ -271,8 +273,10 @@ static struct dbs_tuners {
 	unsigned int cpu_max_freq_2;       /* Yank555.lu : CPU freq. limit running on 2 cores */
 	unsigned int cpu_max_freq_3;       /* Yank555.lu : CPU freq. limit running on 3 cores */
 	unsigned int cpu_max_freq_4;       /* Yank555.lu : CPU freq. limit running on 4 cores */
+	unsigned int cpu_max_freq_stdby;   /* Yank555.lu : CPU freq. limit when screen off */
 	unsigned int up_nr_cpus;
 	unsigned int max_cpu_lock;
+	unsigned int max_cpu_lock_stdby;   /* Yank555.lu : Maximum numbers of cores online when screen off */
 	unsigned int min_cpu_lock;
 	atomic_t hotplug_lock;
 	unsigned int dvfs_debug;
@@ -291,13 +295,15 @@ static struct dbs_tuners {
 	.cpu_down_rate = DEF_CPU_DOWN_RATE,
 	.cpu_up_freq = DEF_CPU_UP_FREQ,
 	.cpu_down_freq = DEF_CPU_DOWN_FREQ,
-	.cpu_max_freq_current = DEF_CPU_MAX_FREQ_4, /* Yank555.lu : Current CPU freq. limit set at 4 cores level */
-	.cpu_max_freq_1 = DEF_CPU_MAX_FREQ_1,       /* Yank555.lu : CPU freq. limit running on 1 core */
-	.cpu_max_freq_2 = DEF_CPU_MAX_FREQ_2,       /* Yank555.lu : CPU freq. limit running on 2 cores */
-	.cpu_max_freq_3 = DEF_CPU_MAX_FREQ_3,       /* Yank555.lu : CPU freq. limit running on 3 cores */
-	.cpu_max_freq_4 = DEF_CPU_MAX_FREQ_4,       /* Yank555.lu : CPU freq. limit running on 4 cores */
+	.cpu_max_freq_current = DEF_CPU_MAX_FREQ_4,   /* Yank555.lu : Current CPU freq. limit set at 4 cores level */
+	.cpu_max_freq_1 = DEF_CPU_MAX_FREQ_1,         /* Yank555.lu : CPU freq. limit running on 1 core */
+	.cpu_max_freq_2 = DEF_CPU_MAX_FREQ_2,         /* Yank555.lu : CPU freq. limit running on 2 cores */
+	.cpu_max_freq_3 = DEF_CPU_MAX_FREQ_3,         /* Yank555.lu : CPU freq. limit running on 3 cores */
+	.cpu_max_freq_4 = DEF_CPU_MAX_FREQ_4,         /* Yank555.lu : CPU freq. limit running on 4 cores */
+	.cpu_max_freq_stdby = DEF_CPU_MAX_FREQ_STDBY, /* Yank555.lu : CPU freq. limit when screen off */
 	.up_nr_cpus = DEF_UP_NR_CPUS,
 	.max_cpu_lock = DEF_MAX_CPU_LOCK,
+	.max_cpu_lock_stdby = DEF_MAX_CPU_LOCK_STDBY, /* Yank555.lu : Maximum numbers of cores online when screen off */
 	.min_cpu_lock = DEF_MIN_CPU_LOCK,
 	.hotplug_lock = ATOMIC_INIT(0),
 	.dvfs_debug = 0,
@@ -499,8 +505,10 @@ show_one(cpu_max_freq_1, cpu_max_freq_1);             /* Yank555.lu : CPU freq. 
 show_one(cpu_max_freq_2, cpu_max_freq_2);             /* Yank555.lu : CPU freq. limit running on 2 cores */
 show_one(cpu_max_freq_3, cpu_max_freq_3);             /* Yank555.lu : CPU freq. limit running on 3 cores */
 show_one(cpu_max_freq_4, cpu_max_freq_4);             /* Yank555.lu : CPU freq. limit running on 4 cores */
+show_one(cpu_max_freq_stdby, cpu_max_freq_stdby);     /* Yank555.lu : CPU freq. limit when screen off */
 show_one(up_nr_cpus, up_nr_cpus);
 show_one(max_cpu_lock, max_cpu_lock);
+show_one(max_cpu_lock_stdby, max_cpu_lock_stdby);     /* Yank555.lu : Maximum numbers of cores online when screen off */
 show_one(min_cpu_lock, min_cpu_lock);
 show_one(dvfs_debug, dvfs_debug);
 static ssize_t show_hotplug_lock(struct kobject *kobj,
@@ -865,6 +873,36 @@ static ssize_t store_cpu_max_freq_4(struct kobject *a, struct attribute *b,
 	return count;				
 }
 
+/* Yank555.lu : CPU freq. limit when screen off */
+static ssize_t store_cpu_max_freq_stdby(struct kobject *a, struct attribute *b,
+				    const char *buf, size_t count)
+{
+	unsigned int input;
+	struct cpufreq_frequency_table *table;
+	unsigned int i = 0;
+	int ret;
+
+	ret = sscanf(buf, "%u", &input);
+	if (ret != 1)
+		return -EINVAL;
+
+	table = cpufreq_frequency_get_table(0);
+
+	if (!table) {
+		return -EINVAL;
+	} else {
+		for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
+			if (table[i].frequency == input)
+				dbs_tuners_ins.cpu_max_freq_stdby = input;
+	}
+
+	/* If the screen is turned off, update current CPU freq. limit */
+	if (dbs_tuners_ins.early_suspend != -1)
+		dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_stdby;
+
+	return count;				
+}
+
 static ssize_t store_up_nr_cpus(struct kobject *a, struct attribute *b,
 				const char *buf, size_t count)
 {
@@ -886,6 +924,19 @@ static ssize_t store_max_cpu_lock(struct kobject *a, struct attribute *b,
 	if (ret != 1)
 		return -EINVAL;
 	dbs_tuners_ins.max_cpu_lock = min(input, num_possible_cpus());
+	return count;
+}
+
+/* Yank555.lu : Maximum numbers of cores online when screen off */
+static ssize_t store_max_cpu_lock_stdby(struct kobject *a, struct attribute *b,
+				  const char *buf, size_t count)
+{
+	unsigned int input;
+	int ret;
+	ret = sscanf(buf, "%u", &input);
+	if (ret != 1)
+		return -EINVAL;
+	dbs_tuners_ins.max_cpu_lock_stdby = min(input, num_possible_cpus());
 	return count;
 }
 
@@ -961,12 +1012,14 @@ define_one_global_rw(cpu_down_rate);
 define_one_global_rw(cpu_up_freq);
 define_one_global_rw(cpu_down_freq);
 define_one_global_rw(cpu_max_freq_current); /* Yank555.lu : Current CPU freq. limit (should be ro, but nevermind for now) */
-define_one_global_rw(cpu_max_freq_1); /* Yank555.lu : CPU freq. limit running on 1 core */
-define_one_global_rw(cpu_max_freq_2); /* Yank555.lu : CPU freq. limit running on 2 core */
-define_one_global_rw(cpu_max_freq_3); /* Yank555.lu : CPU freq. limit running on 3 core */
-define_one_global_rw(cpu_max_freq_4); /* Yank555.lu : CPU freq. limit running on 4 core */
+define_one_global_rw(cpu_max_freq_1);       /* Yank555.lu : CPU freq. limit running on 1 core */
+define_one_global_rw(cpu_max_freq_2);       /* Yank555.lu : CPU freq. limit running on 2 core */
+define_one_global_rw(cpu_max_freq_3);       /* Yank555.lu : CPU freq. limit running on 3 core */
+define_one_global_rw(cpu_max_freq_4);       /* Yank555.lu : CPU freq. limit running on 4 core */
+define_one_global_rw(cpu_max_freq_stdby);   /* Yank555.lu : CPU freq. limit when screen off */
 define_one_global_rw(up_nr_cpus);
 define_one_global_rw(max_cpu_lock);
+define_one_global_rw(max_cpu_lock_stdby);   /* Yank555.lu : Maximum numbers of cores online when screen off */
 define_one_global_rw(min_cpu_lock);
 define_one_global_rw(hotplug_lock);
 define_one_global_rw(dvfs_debug);
@@ -985,14 +1038,16 @@ static struct attribute *dbs_attributes[] = {
 	&cpu_up_freq.attr,
 	&cpu_down_freq.attr,
 	&cpu_max_freq_current.attr, /* Yank555.lu : Current CPU freq. limit */
-	&cpu_max_freq_1.attr, /* Yank555.lu : CPU freq. limit running on 1 core */
-	&cpu_max_freq_2.attr, /* Yank555.lu : CPU freq. limit running on 2 cores */
-	&cpu_max_freq_3.attr, /* Yank555.lu : CPU freq. limit running on 3 cores */
-	&cpu_max_freq_4.attr, /* Yank555.lu : CPU freq. limit running on 4 cores */
+	&cpu_max_freq_1.attr,       /* Yank555.lu : CPU freq. limit running on 1 core */
+	&cpu_max_freq_2.attr,       /* Yank555.lu : CPU freq. limit running on 2 cores */
+	&cpu_max_freq_3.attr,       /* Yank555.lu : CPU freq. limit running on 3 cores */
+	&cpu_max_freq_4.attr,       /* Yank555.lu : CPU freq. limit running on 4 cores */
+	&cpu_max_freq_stdby.attr,   /* Yank555.lu : CPU freq. limit when screen off */
 	&up_nr_cpus.attr,
 	/* priority: hotplug_lock > max_cpu_lock > min_cpu_lock
 	   Exception: hotplug_lock on early_suspend uses min_cpu_lock */
 	&max_cpu_lock.attr,
+	&max_cpu_lock_stdby.attr,   /* Yank555.lu : Maximum numbers of cores online when screen off */
 	&min_cpu_lock.attr,
 	&hotplug_lock.attr,
 	&dvfs_debug.attr,
@@ -1049,15 +1104,21 @@ static void cpu_up_work(struct work_struct *work)
 	}
 
 	/* Yank555.lu : Store current desired CPU freq. limit based on number online cores */
-	switch (num_online_cpus()) {
-		case 1 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_1;
-				break;
-		case 2 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_2;
-				break;
-		case 3 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_3;
-				break;
-		case 4 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_4;
-				break;
+	if (dbs_tuners_ins.early_suspend != -1) {
+		/* Screen if off, enforce screen off CPU freq. limit */
+		dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_stdby;
+	} else {
+		/* Screen if on, enforce core-based CPU freq. limit */
+		switch (num_online_cpus()) {
+			case 1 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_1;
+					break;
+			case 2 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_2;
+					break;
+			case 3 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_3;
+					break;
+			case 4 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_4;
+					break;
+		}
 	}
 }
 
@@ -1081,15 +1142,21 @@ static void cpu_down_work(struct work_struct *work)
 	}
 
 	/* Yank555.lu : Store current desired CPU freq. limit based on number online cores */
-	switch (num_online_cpus()) {
-		case 1 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_1;
-				break;
-		case 2 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_2;
-				break;
-		case 3 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_3;
-				break;
-		case 4 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_4;
-				break;
+	if (dbs_tuners_ins.early_suspend != -1) {
+		/* Screen if off, enforce screen off CPU freq. limit */
+		dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_stdby;
+	} else {
+		/* Screen if on, enforce core-based CPU freq. limit */
+		switch (num_online_cpus()) {
+			case 1 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_1;
+					break;
+			case 2 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_2;
+					break;
+			case 3 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_3;
+					break;
+			case 4 :	dbs_tuners_ins.cpu_max_freq_current = dbs_tuners_ins.cpu_max_freq_4;
+					break;
+		}
 	}
 }
 
@@ -1476,6 +1543,7 @@ static struct notifier_block reboot_notifier = {
 static struct early_suspend early_suspend;
 unsigned int yank_prev_freq_step;
 unsigned int yank_prev_sampling_rate;
+unsigned int yank_prev_max_cpu_lock;  /* Yank555.lu : Maximum numbers of cores online before screen went off */
 static void cpufreq_yankasusq_early_suspend(struct early_suspend *h)
 {
 #if EARLYSUSPEND_HOTPLUGLOCK
@@ -1484,8 +1552,10 @@ static void cpufreq_yankasusq_early_suspend(struct early_suspend *h)
 #endif
 	yank_prev_freq_step = dbs_tuners_ins.freq_step;
 	yank_prev_sampling_rate = dbs_tuners_ins.sampling_rate;
+	yank_prev_max_cpu_lock = dbs_tuners_ins.max_cpu_lock;                    /* Yank555.lu : keep max_cpu_lock safe */
 	dbs_tuners_ins.freq_step = 20;
 	dbs_tuners_ins.sampling_rate *= 4;
+	dbs_tuners_ins.max_cpu_lock = dbs_tuners_ins.max_cpu_lock_stdby;         /* Yank555.lu : Limit number of online cores as requested when screen off (CPU freq. limit is handled elsewhere */
 #if EARLYSUSPEND_HOTPLUGLOCK
 	atomic_set(&g_hotplug_lock,
 	    (dbs_tuners_ins.min_cpu_lock) ? dbs_tuners_ins.min_cpu_lock : 1);
@@ -1501,6 +1571,7 @@ static void cpufreq_yankasusq_late_resume(struct early_suspend *h)
 	dbs_tuners_ins.early_suspend = -1;
 	dbs_tuners_ins.freq_step = yank_prev_freq_step;
 	dbs_tuners_ins.sampling_rate = yank_prev_sampling_rate;
+	dbs_tuners_ins.max_cpu_lock = yank_prev_max_cpu_lock;                    /* Yank555.lu : restore max_cpu_lock */
 #if EARLYSUSPEND_HOTPLUGLOCK
 	apply_hotplug_lock();
 	start_rq_work();
