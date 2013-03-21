@@ -1561,7 +1561,8 @@ struct frontswap_ops zcache_frontswap_register_ops(void)
  * NOTHING HAPPENS!
  */
 
-static int zcache_enabled;
+/* Yank555.lu - enable zcache by default if it is compiled */
+static int zcache_enabled = 1;
 
 static int __init enable_zcache(char *s)
 {
