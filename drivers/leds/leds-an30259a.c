@@ -357,9 +357,9 @@ static void an30259a_start_led_pattern(int mode)
 		g_brightness = LED_G_CURRENT / LED_DYNAMIC_CURRENT;
 		b_brightness = LED_B_CURRENT / LED_DYNAMIC_CURRENT;
 	} else {
-		r_brightness = LED_MAX_CURRENT / LED_DYNAMIC_CURRENT;
-		g_brightness = LED_MAX_CURRENT / LED_DYNAMIC_CURRENT;
-		b_brightness = LED_MAX_CURRENT / LED_DYNAMIC_CURRENT;
+		r_brightness = LED_MAX_CURRENT;
+		g_brightness = LED_MAX_CURRENT;
+		b_brightness = LED_MAX_CURRENT;
 	}
 
 	switch (mode) {
