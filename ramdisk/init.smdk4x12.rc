@@ -1,5 +1,6 @@
 import init.smdk4x12.usb.rc
 import init.bt.rc
+import init.carrier.rc
 
 on early-init
     export EXTERNAL_STORAGE /storage/sdcard0
@@ -7,6 +8,7 @@ on early-init
     mkdir /storage/sdcard0 0000 system system
     symlink /storage/sdcard0 /sdcard
     symlink /storage/sdcard0 /mnt/sdcard
+    mkdir /preload
 # map "real" external storages paths also in same way. backwards compatibility.
     symlink /storage/extSdCard /mnt/extSdCard
     symlink /storage/UsbDriveA /mnt/UsbDriveA
@@ -26,10 +28,9 @@ on early-init
     mkdir /storage/UsbDriveF 0000 system system
 
     mkdir /efs 0771 radio system
-    
-    mkdir /preload 0771 system system 
 
 on init
+
 # Vibetonz
 export VIBE_PIPE_PATH /dev/pipes
 mkdir /dev/pipes 0771 shell shell
@@ -64,6 +65,14 @@ on post-fs-data
     write /data/.psm.info 1
     chown system root /data/.psm.info
     chmod 0660 /data/.psm.info
+
+# for AT distributor
+    chown system radio /sys/module/cpuidle_exynos4/parameters/enable_mask
+    chmod 0664 /sys/module/cpuidle_exynos4/parameters/enable_mask
+
+# Waketime fot fast dormancy
+    chown system radio /sys/devices/platform/mdm_hsic_pm0/waketime
+    chmod 0660 /sys/devices/platform/mdm_hsic_pm0/waketime
 
 on boot
 # SISO-ANDR_PERF :: START Changing scheduler to noop during boot
@@ -103,7 +112,8 @@ on boot
 # WIFI
     setprop wifi.interface wlan0
 
-    symlink /dev/block/mmcblk0p4 /dev/block/param
+#PARAM
+    symlink /dev/block/mmcblk0p7 /dev/block/param
 
 # Permissions for bluetooth
     setprop ro.bt.bdaddr_path "/efs/bluetooth/bt_addr"
@@ -179,6 +189,7 @@ on boot
     chown system radio /sys/class/sensors/magnetic_sensor/raw_data
     chown system radio /sys/class/sensors/magnetic_sensor/vendor
     chown system radio /sys/class/sensors/magnetic_sensor/name
+
 # NFC
     setprop ro.nfc.port "I2C"
     chmod 0600 /dev/pn544
@@ -193,56 +204,46 @@ on fs
     setprop ro.crypto.fuse_sdcard true
 
 # for LogMeIn
-    mount ext4 /dev/block/mmcblk0p9 /system rw wait noatime remount
+    mount ext4 /dev/block/mmcblk0p13 /system rw wait noatime remount
 
     chown graphics /system/bin/RescueStarter
     chmod 0755 /system/bin/RescueStarter
     chown graphics /system/bin/RescueServer
     chmod 0755 /system/bin/RescueServer
 
-    mount ext4 /dev/block/mmcblk0p9 /system ro wait noatime remount
-	
+    mount ext4 /dev/block/mmcblk0p13 /system ro wait noatime remount
+
+#MDM requirement
+    mkdir /firmware 0771 system system
+    mount vfat /dev/block/mmcblk0p10 /firmware ro shortname=lower fmask=0133,dmask=0022
+    mkdir /tombstones
+    mount ext4 /dev/block/mmcblk0p11 /tombstones nosuid nodev barrier=1
+    chown system system /tombstones
+    chmod 0775 /tombstones
+    mkdir /tombstones/modem 0775 system system
+    mkdir /tombstones/lpass 0775 system system
+    mkdir /tombstones/wcnss 0775 system system
+    mkdir /tombstones/dsps 0775 system system
+    rmdir /tombstones/qcks
+    mkdir /tombstones/qcks 771 system system
+    rmdir /tombstones/efs
+    mkdir /tombstones/efs 771 system system
+
+    chown system radio /dev/block/platform/dw_mmc/by-name
+    chmod 0775 /dev/block/platform/dw_mmc/by-name
+
 # Permissions for backlight
     chown system system /sys/class/backlight/panel/brightness
     chown system system /sys/class/sec/sec_touchkey/brightness
 
-# Permissions for DVFS
-    chown radio system /sys/power/cpufreq_table
-    chown radio system /sys/power/cpufreq_max_limit
-    chown radio system /sys/power/cpufreq_min_limit
-    chmod 0660 /sys/power/cpufreq_table
-    chmod 0660 /sys/power/cpufreq_max_limit
-    chmod 0660 /sys/power/cpufreq_min_limit
-
-# MTP device permission
-	chmod 0660 /dev/usb_mtp_gadget
-	chown system system /dev/usb_mtp_gadget
-
-# Permissions for Gscaler log level
-    chmod 0666 /sys/module/gsc/parameters/gsc_dbg
-
-
-# create data/gps for GPS daemon
-    chown root system /dev/ttySAC1
-    chmod 0660 /dev/ttySAC1
-    chown root system /sys/class/sec/gps/GPS_PWR_EN/value
-    chmod 0664 /sys/class/sec/gps/GPS_PWR_EN/value
-    chown root system /sys/class/sec/gps/GPS_nRST/value
-    chmod 0664 /sys/class/sec/gps/GPS_nRST/value
-    mkdir /data/gps 771 system system
-    chown system system /data/gps
-
-# NFC
-    setprop ro.nfc.port "I2C"
-    chmod 0600 /dev/pn544
-    chown nfc nfc /dev/pn544
-
 # Permissions for LCD
+    chown system radio /sys/class/lcd/panel/lcd_power
     chown system radio /sys/class/lcd/panel/lcd_type
     chown system radio /sys/class/lcd/panel/device/hs_toggle
     chown system media_rw /sys/class/lcd/panel/power_reduce
     chown system system /sys/class/backlight/panel/auto_brightness
     chown system system /sys/class/graphics/fb0/lcdfreq/level
+    chown system system /sys/class/lcd/panel/siop_enable
 
 # Permissions for mDNIe
     chown system media_rw /sys/class/mdnie/mdnie/mode
@@ -257,6 +258,19 @@ on fs
 # Switch Device
     chown system radio /sys/class/sec/switch/otg_test
     chown system radio /sys/class/sec/switch/adc
+    chown system radio /sys/class/sec/switch/apo_factory
+
+# MTP device permission
+	chmod 0660 /dev/usb_mtp_gadget
+	chown system system /dev/usb_mtp_gadget
+
+# Permissions for Gscaler log level
+    chmod 0666 /sys/module/gsc/parameters/gsc_dbg
+
+# NFC
+    setprop ro.nfc.port "I2C"
+    chmod 0600 /dev/pn544
+    chown nfc nfc /dev/pn544
 
 # IPC sysfs
     chown radio radio /sys/devices/virtual/misc/multipdp/waketime
@@ -265,6 +279,28 @@ on post-fs
     chown radio system /efs
     chmod 0771 /efs
 
+on post-fs-data
+
+#QCRIL
+
+    #Create QMUX deamon socket area
+    mkdir /dev/socket/qmux_radio 0770 radio radio
+    chmod 2770 /dev/socket/qmux_radio
+    mkdir /dev/socket/qmux_audio 0770 media audio
+    chmod 2770 /dev/socket/qmux_audio
+    mkdir /dev/socket/qmux_gps 0770 gps gps
+    chmod 2770 /dev/socket/qmux_gps
+
+    # Allow QMUX daemon to assign port open wait time
+    chown radio radio /sys/devices/virtual/hsicctl/hsicctl0/modem_wait
+
+    # To prevent out of order acknowledgements from making
+    # connection tracking to treat them as not belonging to
+    # the connection they belong to.
+    # Otherwise, a weird issue happens in which some long
+    # connections on high-throughput links get dropped when
+    # an ack packet comes out of order
+    write /proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal 1
 
 # SISO-ANDR_PERF :: START Changing scheduler to cfq and reseting cpu min freq to -1 after boot complete
 on property:sys.boot_completed=1
@@ -272,13 +308,6 @@ on property:sys.boot_completed=1
     write /sys/power/cpufreq_min_limit -1
 # SISO-ANDR_PERF :: END
 
-on property:persist.sys.storage_preload=1
-    mount ext4 /dev/block/mmcblk0p10 /preload nosuid nodev noatime wait ro
-    setprop storage.preload.complete 1
-
-on property:persist.sys.storage_preload=0
-    exec /system/bin/umount /preload   
-    
 ## Daemon processes to be run by init.
 ##
 service ueventd /sbin/ueventd
@@ -303,21 +332,11 @@ service setup_fs /system/bin/setup_fs \
     group root
     oneshot
 
-# RILD
-service ril-daemon /system/bin/rild
-    class main
-    socket rild stream 660 root radio
-    socket rild-debug stream 660 radio system
-    user root
-    group radio cache inet misc audio sdcard_rw log sdcard_r
-    onrestart restart cpboot-daemon
-
 # create virtual SD card at /storage/sdcard, based on the /data/media directory
 # daemon will drop to user/group system/media_rw after initializing
 # underlying files in /data/media will be created with user and group media_rw (1023)
 service sdcard /system/bin/sdcard /data/media 1023 1023
     class late_start
-
 
 #	-iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf -N \
 service p2p_supplicant /system/bin/p2p_supplicant \
@@ -357,13 +376,17 @@ service iprenew_p2p /system/bin/dhcpcd -n
     disabled
     oneshot
 
-# GPS
-service gpsd /system/bin/gpsd -c /system/etc/gps.xml
+# AT Distributor for factory test
+service at_distributor /system/bin/at_distributor
     class main
-    socket gps seqpacket 0660 gps system
-    user gps
-    group system inet sdcard_rw
-    ioprio be 0
+    user root
+    group radio log
+
+# diag app for cp uart
+service diag_uart_log /system/bin/diag_uart_log
+    class main
+    user root
+    group radio
 
 # TVout
 service TvoutService_C /system/bin/bintvoutservice
@@ -372,10 +395,12 @@ service TvoutService_C /system/bin/bintvoutservice
      group system
 on property:ro.tvout.enable=false
     stop TvoutService_C
-service cpboot-daemon /sbin/cbd -d
-    class main
-    user root
-    group radio cache inet misc audio sdcard_rw log sdcard_r
+
+#service cpboot-daemon /sbin/cbd -d
+#    class main
+#    user root
+#    group radio cache inet misc audio sdcard_rw log
+
 
 # mobicore
 service mcDriverDaemon /system/bin/mcDriverDaemon -r /data/app/FFFFFFFF000000000000000000000001.drbin
@@ -413,6 +438,60 @@ on property:init.svc.macloader=stopped
     chown system root /data/.rev
     chmod 0660 /data/.rev
 # end of wifi
+#QCRIL
+service netmgrd /system/bin/netmgrd
+    class late_start
+
+service qc_kickstart /system/bin/qcks s
+    class core
+    user root
+    group radio cache inet misc audio sdcard_rw log
+
+service ril-daemon /system/bin/rild
+    class main
+    socket rild stream 660 root radio
+    socket rild-debug stream 660 radio system
+    user root
+    group radio cache inet misc audio sdcard_rw qcom_oncrpc diag log sdcard_r
+
+#sensorhubservice start
+service sensorhubservice /system/bin/sensorhubservice
+    class main
+    user system
+    group input
+
+service secril-daemon /system/bin/sec-ril
+    class main
+    user root
+    group radio cache inet misc audio sdcard_rw log
+
+#For EncryptionMode - remove disabled, Modify class main
+service qmiproxy /system/bin/qmiproxy
+    class main
+    user radio
+    group radio gps
+
+service qmuxd /system/bin/qmuxd
+    class main
+    user root
+    group radio log audio bluetooth gps
+
+#start GNSS/Sensor interface daemon
+service gsiff_daemon /system/bin/gsiff_daemon
+    class late_start
+    user system
+    group qcom_oncrpc gps
+
+on property:ro.use_data_netmgrd=false
+#netmgr not supported on specific target
+    stop netmgrd
+
+on property:persist.sys.storage_preload=1
+    mount ext4 /dev/block/mmcblk0p14 /preload nosuid nodev noatime wait ro
+    setprop storage.preload.complete 1
+
+on property:persist.sys.storage_preload=0
+    exec /system/bin/umount /preload
 
 # for LogMeIn
     service RescueStarter /system/bin/RescueStarter
