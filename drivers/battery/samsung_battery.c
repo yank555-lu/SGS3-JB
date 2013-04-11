@@ -1643,10 +1643,15 @@ charge_ok:
 #ifdef CONFIG_FORCE_FAST_CHARGE
 		switch (force_fast_charge) {
 
-			/* If we are in custom mA mode, set user requested charge current for AC */
+			/* If we are in substitution mode, set AC charge current for USB */
+			case FAST_CHARGE_FORCE_AC:
+				battery_charge_control(info, info->pdata->chg_curr_ta,
+								info->pdata->in_curr_limit);
+				break;
+			/* If we are in custom mA mode, set user requested charge current for USB */
 			case FAST_CHARGE_FORCE_CUSTOM_MA:
-				battery_charge_control(info, ac_charge_level,
-								ac_charge_level);
+				battery_charge_control(info, usb_charge_level,
+								usb_charge_level);
 				break;
 			/* If fast charge is disabled or in substitution mode, set stock charge current */
 			default:
@@ -1671,10 +1676,15 @@ charge_ok:
 #ifdef CONFIG_FORCE_FAST_CHARGE
 			switch (force_fast_charge) {
 
-				/* If we are in custom mA mode, set user requested charge current for AC */
+				/* If we are in substitution mode, set AC charge current for USB */
+				case FAST_CHARGE_FORCE_AC:
+					battery_charge_control(info, info->pdata->chg_curr_ta,
+									info->pdata->in_curr_limit);
+					break;
+				/* If we are in custom mA mode, set user requested charge current for USB */
 				case FAST_CHARGE_FORCE_CUSTOM_MA:
-					battery_charge_control(info, ac_charge_level,
-									ac_charge_level);
+					battery_charge_control(info, usb_charge_level,
+									usb_charge_level);
 					break;
 				/* If fast charge is disabled or in substitution mode, set stock charge current */
 				default:
@@ -1694,10 +1704,15 @@ charge_ok:
 #ifdef CONFIG_FORCE_FAST_CHARGE
 			switch (force_fast_charge) {
 
-				/* If we are in custom mA mode, set user requested charge current for AC */
+				/* If we are in substitution mode, set AC charge current for USB */
+				case FAST_CHARGE_FORCE_AC:
+					battery_charge_control(info, info->pdata->chg_curr_ta,
+									info->pdata->in_curr_limit);
+					break;
+				/* If we are in custom mA mode, set user requested charge current for USB */
 				case FAST_CHARGE_FORCE_CUSTOM_MA:
-					battery_charge_control(info, ac_charge_level,
-									ac_charge_level);
+					battery_charge_control(info, usb_charge_level,
+									usb_charge_level);
 					break;
 				/* If fast charge is disabled or in substitution mode, set stock charge current */
 				default:
@@ -1715,10 +1730,15 @@ charge_ok:
 #ifdef CONFIG_FORCE_FAST_CHARGE
 				switch (force_fast_charge) {
 
-					/* If we are in custom mA mode, set user requested charge current for AC */
+					/* If we are in substitution mode, set AC charge current for USB */
+					case FAST_CHARGE_FORCE_AC:
+						battery_charge_control(info, info->pdata->chg_curr_ta,
+										info->pdata->in_curr_limit);
+						break;
+					/* If we are in custom mA mode, set user requested charge current for USB */
 					case FAST_CHARGE_FORCE_CUSTOM_MA:
-						battery_charge_control(info, ac_charge_level,
-										ac_charge_level);
+						battery_charge_control(info, usb_charge_level,
+										usb_charge_level);
 						break;
 					/* If fast charge is disabled or in substitution mode, set stock charge current */
 					default:
@@ -1746,10 +1766,15 @@ charge_ok:
 #ifdef CONFIG_FORCE_FAST_CHARGE
 		switch (force_fast_charge) {
 
-			/* If we are in custom mA mode, set user requested charge current for AC */
+			/* If we are in substitution mode, set AC charge current for USB */
+			case FAST_CHARGE_FORCE_AC:
+				battery_charge_control(info, info->pdata->chg_curr_ta,
+								info->pdata->in_curr_limit);
+				break;
+			/* If we are in custom mA mode, set user requested charge current for USB */
 			case FAST_CHARGE_FORCE_CUSTOM_MA:
-				battery_charge_control(info, ac_charge_level,
-								ac_charge_level);
+				battery_charge_control(info, usb_charge_level,
+								usb_charge_level);
 				break;
 			/* If fast charge is disabled or in substitution mode, set stock charge current */
 			default:
@@ -1767,8 +1792,28 @@ charge_ok:
 	case POWER_SUPPLY_TYPE_WIRELESS:
 		if (!info->pdata->suspend_chging)
 			wake_lock(&info->charge_wake_lock);
+#ifdef CONFIG_FORCE_FAST_CHARGE
+		switch (force_fast_charge) {
+
+			/* If we are in substitution mode, set AC charge current for USB */
+			case FAST_CHARGE_FORCE_AC:
+				battery_charge_control(info, info->pdata->chg_curr_ta,
+								info->pdata->in_curr_limit);
+				break;
+			/* If we are in custom mA mode, set user requested charge current for USB */
+			case FAST_CHARGE_FORCE_CUSTOM_MA:
+				battery_charge_control(info, usb_charge_level,
+								usb_charge_level);
+				break;
+			/* If fast charge is disabled or in substitution mode, set stock charge current */
+			default:
+				battery_charge_control(info, info->pdata->chg_curr_wpc,
+								info->pdata->chg_curr_wpc);
+		}
+#else
 		battery_charge_control(info, info->pdata->chg_curr_wpc,
 						info->pdata->chg_curr_wpc);
+#endif
 		break;
 	default:
 		break;
