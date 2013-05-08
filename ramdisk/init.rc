@@ -766,12 +766,14 @@ service bootanim /system/bin/bootanimation
     disabled
     oneshot
 
-service samsungani /system/bin/samsungani
-    class main
-    user graphics
-    group graphics system
-    disabled
-    oneshot
+# Disabled by Yank555.lu to add custom boot animation support
+#
+#service samsungani /system/bin/samsungani
+#    class main
+#    user graphics
+#    group graphics system
+#    disabled
+#    oneshot
 
 service dbus /system/bin/dbus-daemon --system --nofork
     class main
