@@ -2,11 +2,26 @@ import init.smdk4x12.usb.rc
 import init.bt.rc
 
 on early-init
-    export EXTERNAL_STORAGE /storage/sdcard0
-    mkdir /storage 0550 system sdcard_r
-    mkdir /storage/sdcard0 0000 system system
-    symlink /storage/sdcard0 /sdcard
-    symlink /storage/sdcard0 /mnt/sdcard
+    mkdir /efs 0771 radio system
+
+on init
+    # See storage config details at http://source.android.com/tech/storage/
+    mkdir /mnt/shell/emulated 0700 shell shell
+    mkdir /storage/emulated 0555 root root
+
+    export EXTERNAL_STORAGE /storage/emulated/legacy
+    export EMULATED_STORAGE_SOURCE /mnt/shell/emulated
+    export EMULATED_STORAGE_TARGET /storage/emulated
+
+    # Support legacy paths
+    symlink /storage/emulated/legacy /sdcard
+    symlink /storage/emulated/legacy /mnt/sdcard
+    symlink /storage/emulated/legacy /storage/sdcard0
+    symlink /mnt/shell/emulated/0 /storage/emulated/legacy
+
+    export SECONDARY_STORAGE /storage/extSdCard
+    mkdir /storage/extSdCard 0555 root root
+
 # map "real" external storages paths also in same way. backwards compatibility.
     symlink /storage/extSdCard /mnt/extSdCard
     symlink /storage/UsbDriveA /mnt/UsbDriveA
@@ -25,20 +40,27 @@ on early-init
     mkdir /storage/UsbDriveE 0000 system system
     mkdir /storage/UsbDriveF 0000 system system
 
-    mkdir /efs 0771 radio system
+# To store widevine keybox
+    symlink /data/app /factory
     
     mkdir /preload 0771 system system 
 
-on init
-# Vibetonz
-export VIBE_PIPE_PATH /dev/pipes
-mkdir /dev/pipes 0771 shell shell
+    # Vibetonz
+    export VIBE_PIPE_PATH /dev/pipes
+    mkdir /dev/pipes 0771 system system
 
 on post-fs-data
     # we will remap this as /storage/sdcard with the sdcard fuse tool
     mkdir /data/media 0770 media_rw media_rw
     chown media_rw media_rw /data/media
+
+# SA, System SW, SAMSUNG create log directory
+    mkdir /data/log 0775 system log
+    chown system log /data/log
     setprop vold.post_fs_data_done 1
+
+    chmod 0775 /data/log
+    chmod 0775 /data/anr
 
     # for semco wifi module
 #    mkdir /data/misc/dhcp 0777 dhcp dhcp
@@ -60,10 +82,25 @@ on post-fs-data
 
     mkdir /data/misc/radio 0775 radio system
 
+ # permissions for bluetooth.
+    setprop ro.bt.bdaddr_path "/efs/bluetooth/bt_addr"
+    chown bluetooth net_bt_stack ro.bt.bdaddr_path
+    chown bluetooth net_bt_stack /dev/ttySAC0
+    chmod 0660 /dev/ttySAC0
+    chmod 0660 /sys/class/rfkill/rfkill0/state
+    chown bluetooth net_bt_stack /sys/class/rfkill/rfkill0/state
+    chown bluetooth net_bt_stack /sys/class/rfkill/rfkill0/type
+
     # for TRP/TIS
     write /data/.psm.info 1
     chown system root /data/.psm.info
-    chmod 0660 /data/.psm.info
+    chmod 0664 /data/.psm.info
+
+    # for WIFI Cert
+    chmod 0664 /data/.bustxglom.info
+    chmod 0664 /data/.roamoff.info
+    chmod 0664 /data/.frameburst.info
+    chmod 0664 /data/.txbf.info
 
 on boot
 # SISO-ANDR_PERF :: START Changing scheduler to noop during boot
@@ -72,29 +109,14 @@ on boot
 
     setprop ro.build.product smdk4x12
     setprop ro.product.device smdk4x12
-    setprop ro.radio.noril yes
+    # setprop ro.radio.noril yes
 
 # mobicore
     mkdir /data/app/mcRegistry 0775 system system
-    chmod 0660 /dev/mobicore
-    chown radio system /dev/mobicore
-# mobicore trustlets
-    copy /efs/00000000.authtokcont /data/app/mcRegistry/00000000.authtokcont
-    chown system system /data/app/mcRegistry/00000000.authtokcont
-    copy /system/app/FFFFFFFF000000000000000000000001.drbin /data/app/FFFFFFFF000000000000000000000001.drbin
-    chown system system /data/app/FFFFFFFF000000000000000000000001.drbin
-    copy /system/app/mcRegistry/00060308060501020000000000000000.tlbin /data/app/mcRegistry/00060308060501020000000000000000.tlbin
-    chown system system /data/app/mcRegistry/00060308060501020000000000000000.tlbin
-    copy /system/app/mcRegistry/07010000000000000000000000000000.tlbin /data/app/mcRegistry/07010000000000000000000000000000.tlbin
-    chown system system /data/app/mcRegistry/07010000000000000000000000000000.tlbin
-    copy /system/app/mcRegistry/ffffffff000000000000000000000003.tlbin /data/app/mcRegistry/ffffffff000000000000000000000003.tlbin
-    chown system system /data/app/mcRegistry/ffffffff000000000000000000000003.tlbin
-    copy /system/app/mcRegistry/ffffffff000000000000000000000004.tlbin /data/app/mcRegistry/ffffffff000000000000000000000004.tlbin
-    chown system system /data/app/mcRegistry/ffffffff000000000000000000000004.tlbin
-    copy /system/app/mcRegistry/ffffffff000000000000000000000005.tlbin /data/app/mcRegistry/ffffffff000000000000000000000005.tlbin
-    chown system system /data/app/mcRegistry/ffffffff000000000000000000000005.tlbin
-    copy /system/app/mcRegistry/02010000080300030000000000000000.tlbin /data/app/mcRegistry/02010000080300030000000000000000.tlbin
-    chown system system /data/app/mcRegistry/02010000080300030000000000000000.tlbin
+    chmod 0700 /dev/mobicore
+    chmod 0666 /dev/mobicore-user
+    chown system system /dev/mobicore
+    chown radio system /dev/mobicore-user
 
 # S.LSI secdrv mem
     chown system system /dev/s5p-smem
@@ -104,15 +126,6 @@ on boot
     setprop wifi.interface wlan0
 
     symlink /dev/block/mmcblk0p4 /dev/block/param
-
-# Permissions for bluetooth
-    setprop ro.bt.bdaddr_path "/efs/bluetooth/bt_addr"
-    chown bluetooth bluetooth ro.bt.bdaddr_path
-    chown bluetooth bluetooth /dev/ttySAC0
-    chmod 0600 /dev/ttySAC0
-    chmod 0660 /sys/class/rfkill/rfkill0/state
-    chown bluetooth bluetooth /sys/class/rfkill/rfkill0/state
-    chown bluetooth bluetooth /sys/class/rfkill/rfkill0/type
 
 # <Sensors & NFC>
 # Input Events
@@ -179,6 +192,14 @@ on boot
     chown system radio /sys/class/sensors/magnetic_sensor/raw_data
     chown system radio /sys/class/sensors/magnetic_sensor/vendor
     chown system radio /sys/class/sensors/magnetic_sensor/name
+
+# GPIO DVS
+    chown radio system /sys/class/secgpio_check/secgpio_check_all/check_init_detail
+    chown radio system /sys/class/secgpio_check/secgpio_check_all/check_sleep_detail
+    chown radio system /sys/class/secgpio_check/secgpio_check_all/gpioinfo_check
+    chown radio system /sys/class/secgpio_check/secgpio_check_all/gpioinit_check
+    chown radio system /sys/class/secgpio_check/secgpio_check_all/gpiosleep_check
+
 # NFC
     setprop ro.nfc.port "I2C"
     chmod 0600 /dev/pn544
@@ -186,7 +207,9 @@ on boot
 
 # Vibetonz
     chmod 0660 /dev/tspdrv
-    chown root shell /dev/tspdrv
+    chown system system /dev/tspdrv
+
+    write /proc/sys/vm/swappiness 130
 
 on fs
     mount_all /fstab.smdk4x12
@@ -202,10 +225,6 @@ on fs
 
     mount ext4 /dev/block/mmcblk0p9 /system ro wait noatime remount
 	
-# Permissions for backlight
-    chown system system /sys/class/backlight/panel/brightness
-    chown system system /sys/class/sec/sec_touchkey/brightness
-
 # Permissions for DVFS
     chown radio system /sys/power/cpufreq_table
     chown radio system /sys/power/cpufreq_max_limit
@@ -229,26 +248,29 @@ on fs
     chmod 0664 /sys/class/sec/gps/GPS_PWR_EN/value
     chown root system /sys/class/sec/gps/GPS_nRST/value
     chmod 0664 /sys/class/sec/gps/GPS_nRST/value
-    mkdir /data/gps 771 system system
-    chown system system /data/gps
 
-# NFC
-    setprop ro.nfc.port "I2C"
-    chmod 0600 /dev/pn544
-    chown nfc nfc /dev/pn544
+# make sure data_system dir and perms are properly set.
+    mkdir /data/system 0771 system system
+    chown system system /data/system
+    mkdir /data/system/gps 0771 system system
+    chown system system /data/system/gps
+
+# Permissions for backlight
+    chown system system /sys/class/backlight/panel/brightness
+    chown system system /sys/class/backlight/panel/auto_brightness
+    chown system system /sys/class/sec/sec_touchkey/brightness
 
 # Permissions for LCD
     chown system radio /sys/class/lcd/panel/lcd_type
     chown system radio /sys/class/lcd/panel/device/hs_toggle
-    chown system media_rw /sys/class/lcd/panel/power_reduce
-    chown system system /sys/class/backlight/panel/auto_brightness
+    chown system system /sys/class/lcd/panel/power_reduce
     chown system system /sys/class/graphics/fb0/lcdfreq/level
+    chown system system /sys/class/lcd/panel/siop_enable
 
 # Permissions for mDNIe
-    chown system media_rw /sys/class/mdnie/mdnie/mode
-    chown system media_rw /sys/class/mdnie/mdnie/outdoor
+    chown system system /sys/class/mdnie/mdnie/mode
     chown system media_rw /sys/class/mdnie/mdnie/scenario
-    chown system system /sys/class/mdnie/mdnie/negative
+    chown system system /sys/class/mdnie/mdnie/accessibility
 
 # OTG_TEST
     chown system radio /sys/class/host_notify/usb_otg/booster
@@ -260,6 +282,7 @@ on fs
 
 # IPC sysfs
     chown radio radio /sys/devices/virtual/misc/multipdp/waketime
+    symlink /dev/block/mmcblk0p7 /dev/mbin0
 
 on post-fs
     chown radio system /efs
@@ -312,11 +335,17 @@ service ril-daemon /system/bin/rild
     group radio cache inet misc audio sdcard_rw log sdcard_r
     onrestart restart cpboot-daemon
 
-# create virtual SD card at /storage/sdcard, based on the /data/media directory
+service cpboot-daemon /sbin/cbd -d
+    class main
+    user root
+    group radio cache inet misc audio sdcard_rw log sdcard_r
+
+# create virtual SD card at /mnt/sdcard, based on the /data/media directory
 # daemon will drop to user/group system/media_rw after initializing
 # underlying files in /data/media will be created with user and group media_rw (1023)
-service sdcard /system/bin/sdcard /data/media 1023 1023
+service sdcard /system/bin/sdcard /data/media /mnt/shell/emulated 1023 1023
     class late_start
+    oneshot
 
 
 #	-iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf -N \
@@ -360,9 +389,8 @@ service iprenew_p2p /system/bin/dhcpcd -n
 # GPS
 service gpsd /system/bin/gpsd -c /system/etc/gps.xml
     class main
-    socket gps seqpacket 0660 gps system
     user gps
-    group system inet sdcard_rw
+    group system inet net_raw
     ioprio be 0
 
 # TVout
@@ -378,16 +406,16 @@ service cpboot-daemon /sbin/cbd -d
     group radio cache inet misc audio sdcard_rw log sdcard_r
 
 # mobicore
-service mcDriverDaemon /system/bin/mcDriverDaemon -r /data/app/FFFFFFFF000000000000000000000001.drbin
-    class late_start
+service mcDriverDaemon /system/bin/mcDriverDaemon -r /system/app/FFFFFFFF000000000000000000000001.drbin
+    class core
     user system
     group system
 
 # Vibetonz
 service immvibed /system/bin/immvibed
     class core
-    user shell
-    group shell
+    user system 
+    group system
     oneshot
 
 #for WiFi MFG(TestMode)
@@ -419,3 +447,75 @@ on property:init.svc.macloader=stopped
     class core
     user graphics
     group input graphics
+
+# Bluetooth LE 2 wired Test
+service LE_dut_cmd_on /system/bin/bttestintf enable
+    group bluetooth net_bt_admin
+    disabled
+    oneshot
+
+service LE_dut_cmd_off /system/bin/bttestintf disable
+    group bluetooth net_bt_admin
+    disabled
+    oneshot
+
+service bttestdaemon /system/bin/bttestd
+    class main
+    user bluetooth
+    group bluetooth net_bt_admin
+    disabled
+    oneshot
+
+# bluetooth dhcp config
+service dhcpcd_bt-pan /system/bin/dhcpcd -ABKL
+    class main
+    disabled
+    oneshot
+
+service iprenew_bt-pan /system/bin/dhcpcd -n
+    class late_start
+    disabled
+    oneshot
+
+# SA, System SW, SAMSUNG
+service bugreport /system/bin/bugmailer.sh -v
+    class main
+    disabled
+    oneshot
+    keycodes 114 115 116
+
+on property:ro.dumpstate.dmesg=1
+    write /proc/sys/kernel/dmesg_restrict 0
+
+# Runtime Compcache
+service rtccd /system/bin/rtccd2 -a 300M
+    class core
+    user root
+    oneshot
+
+# Secure Storage startup
+service prepare-ssdaemon /system/bin/sh /system/bin/ss-presetup.sh
+    class core
+    user root
+    group root
+    oneshot
+
+service secure_storage /system/bin/secure_storage_daemon
+    class core
+    user system
+    group system
+    disabled
+
+on property:ro.securestorage.ready=true
+    start secure_storage
+
+# service for TZPR provisioning version check app
+service scranton_RD /system/bin/scranton_RD
+    class main
+    user root
+    disabled
+    oneshot
+
+# start for TZPR provisioning version check app
+on property:sys.mobicoredaemon.enable=true
+    start scranton_RD

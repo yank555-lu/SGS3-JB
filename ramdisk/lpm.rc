@@ -10,6 +10,7 @@ on init
     export EXTERNAL_STORAGE /sdcard
 
     symlink /system/etc /etc
+    symlink /system/vendor /vendor
 
     mkdir /sdcard
     mkdir /preload
@@ -21,6 +22,8 @@ on init
     mkdir /dbdata
     mkdir /mnt 0775 root root
     #mount /tmp /tmp tmpfs   
+
+    write /proc/sys/kernel/hung_task_timeout_secs 0
 
 on early-fs
 	insmod /lib/modules/vibrator.ko
