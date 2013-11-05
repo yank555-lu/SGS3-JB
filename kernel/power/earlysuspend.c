@@ -23,6 +23,9 @@
 #ifdef CONFIG_ZRAM_FOR_ANDROID
 #include <asm/atomic.h>
 #endif /* CONFIG_ZRAM_FOR_ANDROID */
+#ifdef CONFIG_FAST_BOOT
+#include <linux/fake_shut_down.h>
+#endif
 
 #include "power.h"
 
@@ -188,9 +191,6 @@ abort:
 	pm_wd_del_timer(&timer);
 }
 
-#ifdef CONFIG_FAST_BOOT
-extern bool fake_shut_down;
-#endif
 void request_suspend_state(suspend_state_t new_state)
 {
 	unsigned long irqflags;

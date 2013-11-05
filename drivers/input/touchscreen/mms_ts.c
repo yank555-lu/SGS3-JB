@@ -56,6 +56,10 @@
 #include <linux/touch_wake.h>
 #endif
 
+#ifdef CONFIG_MACH_SUPERIOR_KOR_SKT
+#define FW_465GS37
+#endif
+
 #define MAX_FINGERS		10
 #define MAX_WIDTH		30
 #define MAX_PRESSURE		255
@@ -146,6 +150,10 @@ static struct device *bus_dev;
 
 int touch_is_pressed = 0;
 
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+static int noise_mode_indicator;
+#endif
+
 #define ISC_DL_MODE	1
 
 /* 4.8" OCTA LCD */
@@ -153,6 +161,14 @@ int touch_is_pressed = 0;
 
 #define MAX_FW_PATH 255
 #define TSP_FW_FILENAME "melfas_fw.bin"
+
+#ifdef FW_465GS37
+#define FW_VERSION_4_65 0x12
+#define FW_VERSION_HW   0x01
+#undef  FW_VERSION_4_8
+#define FW_VERSION_4_8 FW_VERSION_4_65
+#include "465GS37_V12.h"
+#endif
 
 #if ISC_DL_MODE	/* ISC_DL_MODE start */
 
@@ -252,7 +268,9 @@ struct mms_ts_info {
 
 	struct melfas_tsi_platform_data *pdata;
 	struct early_suspend early_suspend;
-
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+	struct early_suspend power_early_suspend;
+#endif
 	/* protects the enabled flag */
 	struct mutex lock;
 	bool enabled;
@@ -266,6 +284,7 @@ struct mms_ts_info {
 	u8 fw_update_state;
 #endif
 	u8			fw_ic_ver;
+	u8			fw_hw_ver;
 	enum fw_flash_mode fw_flash_mode;
 
 #if TOUCH_BOOSTER
@@ -304,11 +323,14 @@ struct mms_fw_image {
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void mms_ts_early_suspend(struct early_suspend *h);
 static void mms_ts_late_resume(struct early_suspend *h);
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+static void mms_ts_power_late_resume(struct early_suspend *h);
+#endif
 #endif
 
 #if TOUCH_BOOSTER
-static bool dvfs_lock_status = false;
-static bool press_status = false;
+static bool dvfs_lock_status;
+static bool press_status;
 #endif
 
 #if defined(SEC_TSP_FACTORY_TEST)
@@ -501,9 +523,8 @@ static void release_all_fingers(struct mms_ts_info *info)
 	printk(KERN_DEBUG "[TSP] %s\n", __func__);
 
 	for (i = 0; i < MAX_FINGERS; i++) {
-		if (info->finger_state[i] == 1) {
+		if (info->finger_state[i] == 1)
 			dev_notice(&client->dev, "finger %d up(force)\n", i);
-		}
 		info->finger_state[i] = 0;
 		input_mt_slot(info->input_dev, i);
 		input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER,
@@ -659,8 +680,21 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 
 	if (buf[0] == 0x0E) { /* NOISE MODE */
 		dev_dbg(&client->dev, "[TSP] noise mode enter!!\n");
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+		if (noise_mode_indicator == 0) {
+			noise_mode_indicator++;
+			dev_dbg(&client->dev, "[TSP] mms reset by noise mode!!\n");
+			reset_mms_ts(info);
+			info->noise_mode = 0;
+		} else {
+			info->noise_mode = 1 ;
+			dev_dbg(&client->dev, "[TSP] set noise mode!!\n");
+			mms_set_noise_mode(info);
+		}
+#else
 		info->noise_mode = 1 ;
 		mms_set_noise_mode(info);
+#endif
 		goto out;
 	}
 
@@ -1763,6 +1797,20 @@ static int get_fw_version(struct mms_ts_info *info)
 	do {
 		ret = i2c_smbus_read_byte_data(info->client, MMS_FW_VERSION);
 	} while (ret < 0 && retries-- > 0);
+#ifdef FW_465GS37
+	if ((ret == 0xBB) || (ret == 0xBD)) {
+		ret = 1;
+	} else {
+		unsigned char rd_buf[6];
+		retries = 3;
+		do {
+			ret = mms100_i2c_read(info->client, MMS_TSP_REVISION, 6,
+			rd_buf);
+		} while (ret < 0 && retries-- > 0);
+		if (ret >= 0)
+			ret = rd_buf[4];
+	}
+#endif
 
 	return ret;
 }
@@ -1773,9 +1821,19 @@ static int get_hw_version(struct mms_ts_info *info)
 	int retries = 3;
 
 	/* this seems to fail sometimes after a reset.. retry a few times */
+#ifdef FW_465GS37
+	unsigned char rd_buf[6];
+	do {
+		ret = mms100_i2c_read(info->client, MMS_TSP_REVISION, 6,
+		rd_buf);
+	} while (ret < 0 && retries-- > 0);
+	if (ret >= 0)
+		ret = rd_buf[1];
+#else
 	do {
 		ret = i2c_smbus_read_byte_data(info->client, MMS_HW_REVISION);
 	} while (ret < 0 && retries-- > 0);
+#endif
 
 	return ret;
 }
@@ -1852,6 +1910,7 @@ static int mms_ts_fw_info(struct mms_ts_info *info)
 			 "[TSP]fw version 0x%02x !!!!\n", ver);
 
 	hw_rev = get_hw_version(info);
+	info->fw_hw_ver = hw_rev;
 	dev_info(&client->dev,
 		"[TSP] hw rev = %x\n", hw_rev);
 
@@ -1874,6 +1933,40 @@ static int mms_ts_fw_info(struct mms_ts_info *info)
 	return ret;
 }
 
+#ifdef FW_465GS37
+static int mms_ts_fw_download(struct mms_ts_info *info)
+{
+	struct i2c_client *client = info->client;
+	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
+	int ret = 0;
+	const u8 *buff = 0;
+	long fsize = 0;
+
+	fsize = MELFAS_binary_nLength_465GS37;
+	buff = MELFAS_binary_465GS37;
+
+	disable_irq(info->irq);
+
+	i2c_lock_adapter(adapter);
+	info->pdata->mux_fw_flash(true);
+
+	ret = fw_download(info, (const u8 *)buff,
+			(const size_t)fsize);
+
+	info->pdata->mux_fw_flash(false);
+	i2c_unlock_adapter(adapter);
+
+	if (ret < 0) {
+		dev_err(&client->dev, "retrying flashing\n");
+		enable_irq(info->irq);
+		return 1;
+	}
+
+	enable_irq(info->irq);
+	return 0;
+}
+#endif
+
 static int mms_ts_fw_load(struct mms_ts_info *info)
 {
 
@@ -1889,6 +1982,7 @@ static int mms_ts_fw_load(struct mms_ts_info *info)
 		 "[TSP]fw version 0x%02x !!!!\n", ver);
 
 	hw_rev = get_hw_version(info);
+	info->fw_hw_ver = hw_rev;
 	dev_info(&client->dev,
 		"[TSP]hw rev = 0x%02x\n", hw_rev);
 
@@ -1913,7 +2007,11 @@ static int mms_ts_fw_load(struct mms_ts_info *info)
 	}
 
 	while (retries--) {
+#ifdef FW_465GS37
+		ret = mms_ts_fw_download(info);
+#else
 		ret = mms100_ISC_download_mbinary(info);
+#endif
 
 		ver = get_fw_version(info);
 		info->fw_ic_ver = ver;
@@ -2201,7 +2299,11 @@ static void fw_update(void *device_data)
 		dev_info(&client->dev, "built in 4.8 fw is loaded!!\n");
 
 		while (retries--) {
+#ifdef FW_465GS37
+			ret = mms_ts_fw_download(info);
+#else
 			ret = mms100_ISC_download_mbinary(info);
+#endif
 			ver = get_fw_version(info);
 			info->fw_ic_ver = ver;
 			if (ret == 0) {
@@ -2326,7 +2428,14 @@ static void get_fw_ver_bin(void *device_data)
 
 	set_default_result(info);
 
+#if defined(CONFIG_MACH_M3_USA_TMO)
+	snprintf(buff, sizeof(buff), "ME0045%02x", FW_VERSION_4_8);
+#elif defined(FW_465GS37)
+	snprintf(buff, sizeof(buff), "ME%02X%04X",
+		FW_VERSION_HW, FW_VERSION_4_8);
+#else
 	snprintf(buff, sizeof(buff), "%#02x", FW_VERSION_4_8);
+#endif
 
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = 2;
@@ -2344,8 +2453,15 @@ static void get_fw_ver_ic(void *device_data)
 	set_default_result(info);
 
 	ver = info->fw_ic_ver;
-	snprintf(buff, sizeof(buff), "%#02x", ver);
 
+#if defined(CONFIG_MACH_M3_USA_TMO)
+	snprintf(buff, sizeof(buff), "ME0045%02x", ver);
+#elif defined(FW_465GS37)
+	snprintf(buff, sizeof(buff), "ME%02X%04X",
+		info->fw_hw_ver, ver);
+#else
+	snprintf(buff, sizeof(buff), "%#02x", ver);
+#endif
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = 2;
 	dev_info(&info->client->dev, "%s: %s(%d)\n", __func__,
@@ -2360,7 +2476,11 @@ static void get_config_ver(void *device_data)
 
 	set_default_result(info);
 
+#if defined(FW_465GS37)
+	snprintf(buff, sizeof(buff), "E220S_Me_1101");
+#else
 	snprintf(buff, sizeof(buff), "%s", info->config_fw_version);
+#endif
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = 2;
 	dev_info(&info->client->dev, "%s: %s(%d)\n", __func__,
@@ -2935,56 +3055,59 @@ static struct attribute_group sec_touch_factory_attr_group = {
 #if defined(CONFIG_PM) || defined(CONFIG_HAS_EARLYSUSPEND)
 static int mms_ts_suspend(struct device *dev)
 {
-  struct i2c_client *client = to_i2c_client(dev);
-  struct mms_ts_info *info = i2c_get_clientdata(client);
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mms_ts_info *info = i2c_get_clientdata(client);
 
-  if (!info->enabled)
-    return 0;
+	if (!info->enabled)
+		return 0;
 
-  dev_notice(&info->client->dev, "%s: users=%d\n", __func__,
-       info->input_dev->users);
+	dev_notice(&info->client->dev, "%s: users=%d\n", __func__,
+		   info->input_dev->users);
 
-  disable_irq(info->irq);
-  info->enabled = false;
-  touch_is_pressed = 0;
-  release_all_fingers(info);
-  info->pdata->power(false);
-  /* This delay needs to prevent unstable POR by
-  rapid frequently pressing of PWR key. */
-  msleep(50);
-  return 0;
+	disable_irq(info->irq);
+	info->enabled = false;
+	touch_is_pressed = 0;
+	release_all_fingers(info);
+	info->pdata->power(false);
+	/* This delay needs to prevent unstable POR by
+	rapid frequently pressing of PWR key. */
+	msleep(50);
+	return 0;
 }
 
 static int mms_ts_resume(struct device *dev)
 {
-  struct i2c_client *client = to_i2c_client(dev);
-  struct mms_ts_info *info = i2c_get_clientdata(client);
-  int ret = 0;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mms_ts_info *info = i2c_get_clientdata(client);
+	int ret = 0;
 
-  if (info->enabled)
-    return 0;
+	if (info->enabled)
+		return 0;
 
-  dev_notice(&info->client->dev, "%s: users=%d\n", __func__,
-       info->input_dev->users);
-  info->pdata->power(true);
-  msleep(120);
+	dev_notice(&info->client->dev, "%s: users=%d\n", __func__,
+		   info->input_dev->users);
 
-  if (info->ta_status) {
-    dev_notice(&client->dev, "TA connect!!!\n");
-    i2c_smbus_write_byte_data(info->client, 0x33, 0x1);
-  } else {
-    dev_notice(&client->dev, "TA disconnect!!!\n");
-    i2c_smbus_write_byte_data(info->client, 0x33, 0x2);
-  }
+#if !defined(CONFIG_TARGET_LOCALE_KOR)
+	info->pdata->power(true);
+	msleep(120);
+#endif
 
-  /* Because irq_type by EXT_INTxCON register is changed to low_level
-   *  after wakeup, irq_type set to falling edge interrupt again.
-   */
+	if (info->ta_status) {
+		dev_notice(&client->dev, "TA connect!!!\n");
+		i2c_smbus_write_byte_data(info->client, 0x33, 0x1);
+	} else {
+		dev_notice(&client->dev, "TA disconnect!!!\n");
+		i2c_smbus_write_byte_data(info->client, 0x33, 0x2);
+	}
 
-  enable_irq(info->irq);
-  info->enabled = true;
-  mms_set_noise_mode(info);
-  return 0;
+	/* Because irq_type by EXT_INTxCON register is changed to low_level
+	 *  after wakeup, irq_type set to falling edge interrupt again.
+	 */
+
+	enable_irq(info->irq);
+	info->enabled = true;
+	mms_set_noise_mode(info);
+	return 0;
 }
 #endif
 
@@ -2992,19 +3115,29 @@ static int mms_ts_resume(struct device *dev)
 static void mms_ts_early_suspend(struct early_suspend *h)
 {
 #ifndef CONFIG_TOUCH_WAKE
-  struct mms_ts_info *info;
-  info = container_of(h, struct mms_ts_info, early_suspend);
-  mms_ts_suspend(&info->client->dev);
+	struct mms_ts_info *info;
+	info = container_of(h, struct mms_ts_info, early_suspend);
+	mms_ts_suspend(&info->client->dev);
 #endif
 }
 
 static void mms_ts_late_resume(struct early_suspend *h)
 {
 #ifndef CONFIG_TOUCH_WAKE
-  struct mms_ts_info *info;
-  info = container_of(h, struct mms_ts_info, early_suspend);
-  mms_ts_resume(&info->client->dev);
+	struct mms_ts_info *info;
+	info = container_of(h, struct mms_ts_info, early_suspend);
+	mms_ts_resume(&info->client->dev);
 #endif
+}
+#endif
+
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+static void mms_ts_power_late_resume(struct early_suspend *h)
+{
+	struct mms_ts_info *info;
+	info = container_of(h, struct mms_ts_info, power_early_suspend);
+
+	info->pdata->power(true);
 }
 #endif
 
@@ -3014,7 +3147,6 @@ void touchscreen_disable(void)
 {
   if (likely(touchwake_data != NULL))
     mms_ts_suspend(&touchwake_data->client->dev);
-
     return;
 }
 EXPORT_SYMBOL(touchscreen_disable);
@@ -3023,7 +3155,6 @@ void touchscreen_enable(void)
 {
   if (likely(touchwake_data != NULL))
     mms_ts_resume(&touchwake_data->client->dev);
-
     return;
 }
 EXPORT_SYMBOL(touchscreen_enable);
@@ -3043,6 +3174,10 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	struct device *fac_dev_ts;
 #endif
 	touch_is_pressed = 0;
+
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+	noise_mode_indicator = 0;
+#endif
 
 #if 0
 	gpio_request(GPIO_OLED_DET, "OLED_DET");
@@ -3096,6 +3231,32 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 		info->max_y = 1280;
 	}
 
+#if defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
+	i2c_set_clientdata(client, info);
+	info->pdata->power(true);
+	msleep(100);
+
+	ret = i2c_master_recv(client, buf, 1);
+	if (ret < 0) {		/* tsp connect check */
+		pr_err("%s: i2c fail...tsp driver unload [%d], Add[%d]\n",
+			   __func__, ret, info->client->addr);
+		goto err_config;
+	}
+
+	ret = mms_ts_fw_load(info);
+/*	ret = mms_ts_fw_info(info); */
+
+	if (ret) {
+		dev_err(&client->dev, "failed to initialize (%d)\n", ret);
+		goto err_config;
+	}
+
+	info->enabled = true;
+	info->callbacks.inform_charger = melfas_ta_cb;
+	if (info->register_cb)
+		info->register_cb(&info->callbacks);
+#endif
+
 	snprintf(info->phys, sizeof(info->phys),
 		 "%s/input0", dev_name(&client->dev));
 	input_dev->name = "sec_touchscreen"; /*= "Melfas MMSxxx Touchscreen";*/
@@ -3142,6 +3303,7 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	}
 #endif
 
+#if !defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
 	i2c_set_clientdata(client, info);
 	info->pdata->power(true);
 	msleep(100);
@@ -3165,12 +3327,19 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	info->callbacks.inform_charger = melfas_ta_cb;
 	if (info->register_cb)
 		info->register_cb(&info->callbacks);
+#endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	info->early_suspend.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING;
 	info->early_suspend.suspend = mms_ts_early_suspend;
 	info->early_suspend.resume = mms_ts_late_resume;
 	register_early_suspend(&info->early_suspend);
+
+#if defined(CONFIG_TARGET_LOCALE_KOR)
+	info->power_early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB+1;
+	info->power_early_suspend.resume = mms_ts_power_late_resume;
+	register_early_suspend(&info->power_early_suspend);
+#endif
 #endif
 
 #ifdef CONFIG_TOUCH_WAKE
@@ -3207,10 +3376,17 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 #endif
 	return 0;
 
+#if defined(CONFIG_MACH_SUPERIOR_KOR_SKT)
+err_reg_input_dev:
+	input_unregister_device(input_dev);
+err_config:
+	input_free_device(input_dev);
+#else
 err_config:
 	input_unregister_device(input_dev);
 err_reg_input_dev:
 	input_free_device(input_dev);
+#endif
 err_input_alloc:
 	input_dev = NULL;
 	kfree(info);

@@ -5053,7 +5053,9 @@ mem_cgroup_create(struct cgroup_subsys *ss, struct cgroup *cont)
 	if (parent)
 		mem->swappiness = get_swappiness(parent);
 	atomic_set(&mem->refcnt, 1);
+
 	mem->move_charge_at_immigrate = 0;
+
 	mutex_init(&mem->thresholds_lock);
 	return &mem->css;
 free_out:
