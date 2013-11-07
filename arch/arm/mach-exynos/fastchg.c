@@ -26,24 +26,40 @@
  *
  * /sys/kernel/fast_charge/ac_charge_level (rw)
  *
- *   rate at which to charge when on AC (1.0A to 1.5A)
+ *   rate at which to charge when on AC (1.0A/h to 1.5A/h)
  *
  * /sys/kernel/fast_charge/usb_charge_level (r/w)
  *
- *   rate at which to charge when on USB (0.475A to 1.0A)
+ *   rate at which to charge when on USB (0.475A/h to 1.0A/h)
  *
  * /sys/kernel/fast_charge/wireless_charge_level (r/w)
  *
- *   rate at which to charge when on wireless (0.475A to 1.0A)
+ *   rate at which to charge when on wireless (0.475A/h to 1.0A/h)
  *
  * /sys/kernel/fast_charge/failsafe (rw)
  *
- *   0 - disabled - allow anything up to 2.1A to be used as AC / USB custom current
+ *   0 - disabled - allow anything up to 2.1A/h to be used as AC / USB custom current
  *   1 - enabled  - behaviour as described above (default)
+ *
+ * /sys/kernel/fast_charge/ac_leves (ro)
+ *
+ *   display available levels for AC (for failsafe enabled mode)
+ *
+ * /sys/kernel/fast_charge/usb_levels (ro)
+ *
+ *   display available levels for USB (for failsafe enabled mode)
+ *
+ * /sys/kernel/fast_charge/wireless_levels (ro)
+ *
+ *   display available levels for wireless (for failsafe enabled mode)
  *
  * /sys/kernel/fast_charge/version (ro)
  *
  *   display fast charge version information
+ *
+ * /sys/kernel/fast_charge/info (ro)
+ *
+ *   display complete fast charge configuration in human readable format
  *
  */
 
@@ -56,12 +72,7 @@ int force_fast_charge;
 /* sysfs interface for "force_fast_charge" */
 static ssize_t force_fast_charge_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	switch (force_fast_charge) {
-		case FAST_CHARGE_DISABLED:		return sprintf(buf, "0 - Disabled (default)\n");
-		case FAST_CHARGE_FORCE_AC:		return sprintf(buf, "1 - Use stock AC level on USB\n");
-		case FAST_CHARGE_FORCE_CUSTOM_MA:	return sprintf(buf, "2 - Use custom mA on AC (%dmA) and USB (%dmA)\n",ac_charge_level,usb_charge_level);
-		default:				return sprintf(buf, "something went wrong\n");
-	}
+	return sprintf(buf, "%d\n", force_fast_charge);
 }
 
 static ssize_t force_fast_charge_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
@@ -83,27 +94,10 @@ static ssize_t force_fast_charge_store(struct kobject *kobj, struct kobj_attribu
 static struct kobj_attribute force_fast_charge_attribute =
 __ATTR(force_fast_charge, 0666, force_fast_charge_show, force_fast_charge_store);
 
-static struct attribute *force_fast_charge_attrs[] = {
-&force_fast_charge_attribute.attr,
-NULL,
-};
-
-static struct attribute_group force_fast_charge_attr_group = {
-.attrs = force_fast_charge_attrs,
-};
-
 /* sysfs interface for "ac_charge_level" */
 static ssize_t ac_charge_level_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	switch (ac_charge_level) {
-		case AC_CHARGE_1000:		return sprintf(buf, "[1000]  1100  1200  1300  1400  1500\n");
-		case AC_CHARGE_1100:		return sprintf(buf, "1000  [1100]  1200  1300  1400  1500\n");
-		case AC_CHARGE_1200:		return sprintf(buf, "1000  1100  [1200]  1300  1400  1500\n");
-		case AC_CHARGE_1300:		return sprintf(buf, "1000  1100  1200  [1300]  1400  1500\n");
-		case AC_CHARGE_1400:		return sprintf(buf, "1000  1100  1200  1300  [1400]  1500\n");
-		case AC_CHARGE_1500:		return sprintf(buf, "1000  1100  1200  1300  1400  [1500]\n");
-		default:			return sprintf(buf, "Custom : %dmA\n",ac_charge_level);
-	}
+	return sprintf(buf, "%d\n", ac_charge_level);
 }
 
 static ssize_t ac_charge_level_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
@@ -143,27 +137,10 @@ static ssize_t ac_charge_level_store(struct kobject *kobj, struct kobj_attribute
 static struct kobj_attribute ac_charge_level_attribute =
 __ATTR(ac_charge_level, 0666, ac_charge_level_show, ac_charge_level_store);
 
-static struct attribute *ac_charge_level_attrs[] = {
-&ac_charge_level_attribute.attr,
-NULL,
-};
-
-static struct attribute_group ac_charge_level_attr_group = {
-.attrs = ac_charge_level_attrs,
-};
-
 /* sysfs interface for "usb_charge_level" */
 static ssize_t usb_charge_level_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	switch (usb_charge_level) {
-		case USB_CHARGE_475:		return sprintf(buf, "[475]  600  700  800  900  1000\n");
-		case USB_CHARGE_600:		return sprintf(buf, "475  [600]  700  800  900  1000\n");
-		case USB_CHARGE_700:		return sprintf(buf, "475  600  [700]  800  900  1000\n");
-		case USB_CHARGE_800:		return sprintf(buf, "475  600  700  [800]  900  1000\n");
-		case USB_CHARGE_900:		return sprintf(buf, "475  600  700  800  [900]  1000\n");
-		case USB_CHARGE_1000:		return sprintf(buf, "475  600  700  800  900  [1000]\n");
-		default:			return sprintf(buf, "Custom : %dmA\n",usb_charge_level);
-	}
+	return sprintf(buf, "%d\n", usb_charge_level);
 }
 
 static ssize_t usb_charge_level_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
@@ -202,27 +179,10 @@ static ssize_t usb_charge_level_store(struct kobject *kobj, struct kobj_attribut
 static struct kobj_attribute usb_charge_level_attribute =
 __ATTR(usb_charge_level, 0666, usb_charge_level_show, usb_charge_level_store);
 
-static struct attribute *usb_charge_level_attrs[] = {
-&usb_charge_level_attribute.attr,
-NULL,
-};
-
-static struct attribute_group usb_charge_level_attr_group = {
-.attrs = usb_charge_level_attrs,
-};
-
 /* sysfs interface for "wireless_charge_level" */
 static ssize_t wireless_charge_level_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	switch (wireless_charge_level) {
-		case WIRELESS_CHARGE_475:	return sprintf(buf, "[475]  600  700  800  900  1000\n");
-		case WIRELESS_CHARGE_600:	return sprintf(buf, "475  [600]  700  800  900  1000\n");
-		case WIRELESS_CHARGE_700:	return sprintf(buf, "475  600  [700]  800  900  1000\n");
-		case WIRELESS_CHARGE_800:	return sprintf(buf, "475  600  700  [800]  900  1000\n");
-		case WIRELESS_CHARGE_900:	return sprintf(buf, "475  600  700  800  [900]  1000\n");
-		case WIRELESS_CHARGE_1000:	return sprintf(buf, "475  600  700  800  900  [1000]\n");
-		default:			return sprintf(buf, "Custom : %dmA\n",wireless_charge_level);
-	}
+	return sprintf(buf, "%d\n", wireless_charge_level);
 }
 
 static ssize_t wireless_charge_level_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
@@ -261,26 +221,13 @@ static ssize_t wireless_charge_level_store(struct kobject *kobj, struct kobj_att
 static struct kobj_attribute wireless_charge_level_attribute =
 __ATTR(wireless_charge_level, 0666, wireless_charge_level_show, wireless_charge_level_store);
 
-static struct attribute *wireless_charge_level_attrs[] = {
-&wireless_charge_level_attribute.attr,
-NULL,
-};
-
-static struct attribute_group wireless_charge_level_attr_group = {
-.attrs = wireless_charge_level_attrs,
-};
-
 /* sysfs interface for "failsafe" */
 
-int failsafe = FAIL_SAFE_ENABLED;
+int failsafe;
 
 static ssize_t failsafe_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	switch (failsafe) {
-		case FAIL_SAFE_DISABLED:	return sprintf(buf, "0 - Failsafe disabled - please be careful !\n");
-		case FAIL_SAFE_ENABLED:		return sprintf(buf, "1 - Failsafe active (default)\n");
-		default:			return sprintf(buf, "something went wrong\n");
-	}
+	return sprintf(buf, "%d\n", failsafe);
 }
 
 static ssize_t failsafe_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
@@ -305,39 +252,94 @@ static ssize_t failsafe_store(struct kobject *kobj, struct kobj_attribute *attr,
 static struct kobj_attribute failsafe_attribute =
 __ATTR(failsafe, 0666, failsafe_show, failsafe_store);
 
-static struct attribute *failsafe_attrs[] = {
-&failsafe_attribute.attr,
-NULL,
-};
+/* sysfs interface for "ac_levels" */
+static ssize_t ac_levels_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%s\n", AC_LEVELS);
+}
 
-static struct attribute_group failsafe_attr_group = {
-.attrs = failsafe_attrs,
-};
+static struct kobj_attribute ac_levels_attribute =
+__ATTR(ac_levels, 0444, ac_levels_show, NULL);
+
+/* sysfs interface for "usb_levels" */
+static ssize_t usb_levels_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%s\n", USB_LEVELS);
+}
+
+static struct kobj_attribute usb_levels_attribute =
+__ATTR(usb_levels, 0444, usb_levels_show, NULL);
+
+/* sysfs interface for "wireless_levels" */
+static ssize_t wireless_levels_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%s\n", WIRELESS_LEVELS);
+}
+
+static struct kobj_attribute wireless_levels_attribute =
+__ATTR(wireless_levels, 0444, wireless_levels_show, NULL);
+
+/* sysfs interface for "info" */
+static ssize_t info_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(
+		buf,
+		"Forced Fast Charge for Samsung Galaxy S3 (i930x) %s\n\n"
+		"Fast charge mode      : %s\n"
+		"Custom  AC level      : %dmA/h\n"
+		"Custom USB level      : %dmA/h\n"
+		"Custom Wireless level : %dmA/h\n"
+		"Failsafe mode         : %s\n"
+		"Valid AC  levels      : %s\n"
+		"Valid USB levels      : %s\n"
+		"Valid Wireless levels : %s\n",
+		 FAST_CHARGE_VERSION,
+		 force_fast_charge == FAST_CHARGE_DISABLED 	   ? "0 - Disabled (default)" :
+		(force_fast_charge == FAST_CHARGE_FORCE_AC         ? "1 - Use stock AC level on USB" :
+		(force_fast_charge == FAST_CHARGE_FORCE_CUSTOM_MA  ? "2 - Use custom mA on AC and USB" : "Problem : value out of range")),
+		 ac_charge_level,
+		 usb_charge_level,
+		 wireless_charge_level,
+		 failsafe          == FAIL_SAFE_DISABLED           ? "0 - Failsafe disabled - please be careful !" :
+		(failsafe          == FAIL_SAFE_ENABLED            ? "1 - Failsafe active (default)" : "Problem : value out of range"),
+		 failsafe          == FAIL_SAFE_ENABLED            ? AC_LEVELS : ANY_LEVELS,
+		 failsafe          == FAIL_SAFE_ENABLED            ? USB_LEVELS : ANY_LEVELS,
+		 failsafe          == FAIL_SAFE_ENABLED            ? WIRELESS_LEVELS : ANY_LEVELS
+		);
+}
+
+static struct kobj_attribute info_attribute =
+__ATTR(info, 0444, info_show, NULL);
 
 /* sysfs interface for "version" */
 static ssize_t version_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, FAST_CHARGE_VERSION);
-}
-
-static ssize_t version_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
-{
-/* no user change allowed */
-return -EINVAL;
+	return sprintf(buf, "%s\n", FAST_CHARGE_VERSION);
 }
 
 static struct kobj_attribute version_attribute =
-__ATTR(version, 0444, version_show, version_store);
+__ATTR(version, 0444, version_show, NULL);
 
-static struct attribute *version_attrs[] = {
-&version_attribute.attr,
-NULL,
+/* Initialize fast charge sysfs folder */
+static struct kobject *force_fast_charge_kobj;
+
+static struct attribute *force_fast_charge_attrs[] = {
+	&force_fast_charge_attribute.attr,
+	&ac_charge_level_attribute.attr,
+	&usb_charge_level_attribute.attr,
+	&wireless_charge_level_attribute.attr,
+	&failsafe_attribute.attr,
+	&ac_levels_attribute.attr,
+	&usb_levels_attribute.attr,
+	&wireless_levels_attribute.attr,
+	&info_attribute.attr,
+	&version_attribute.attr,
+	NULL,
 };
 
-static struct attribute_group version_attr_group = {
-.attrs = version_attrs,
+static struct attribute_group force_fast_charge_attr_group = {
+.attrs = force_fast_charge_attrs,
 };
-
 
 /* Initialize fast charge sysfs folder */
 static struct kobject *force_fast_charge_kobj;
@@ -345,27 +347,19 @@ static struct kobject *force_fast_charge_kobj;
 int force_fast_charge_init(void)
 {
 	int force_fast_charge_retval;
-	int ac_charge_level_retval;
-	int usb_charge_level_retval;
-	int wireless_charge_level_retval;
-	int failsafe_retval;
-	int version_retval;
 
 	force_fast_charge = FAST_CHARGE_DISABLED; /* Forced fast charge disabled by default */
+	failsafe          = FAIL_SAFE_ENABLED;    /* Allow only values in list by default   */
 
         force_fast_charge_kobj = kobject_create_and_add("fast_charge", kernel_kobj);
         if (!force_fast_charge_kobj) {
                 return -ENOMEM;
         }
+
         force_fast_charge_retval = sysfs_create_group(force_fast_charge_kobj, &force_fast_charge_attr_group);
-        ac_charge_level_retval = sysfs_create_group(force_fast_charge_kobj, &ac_charge_level_attr_group);
-        usb_charge_level_retval = sysfs_create_group(force_fast_charge_kobj, &usb_charge_level_attr_group);
-        wireless_charge_level_retval = sysfs_create_group(force_fast_charge_kobj, &wireless_charge_level_attr_group);
-        failsafe_retval = sysfs_create_group(force_fast_charge_kobj, &failsafe_attr_group);
-        version_retval = sysfs_create_group(force_fast_charge_kobj, &version_attr_group);
-        if (force_fast_charge_retval && ac_charge_level_retval && usb_charge_level_retval && wireless_charge_level_retval && failsafe_retval && version_retval)
+        if (force_fast_charge_retval)
                 kobject_put(force_fast_charge_kobj);
-        return (force_fast_charge_retval && ac_charge_level_retval && usb_charge_level_retval && wireless_charge_level_retval && failsafe_retval && version_retval);
+        return (force_fast_charge_retval);
 }
 /* end sysfs interface */
 

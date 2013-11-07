@@ -18,7 +18,11 @@
 #ifndef _LINUX_FASTCHG_H
 #define _LINUX_FASTCHG_H
 
-#define FAST_CHARGE_VERSION "Forced Fast Charge by Yank555.lu v1.4a\n"
+#define FAST_CHARGE_VERSION "v1.5 by Yank555.lu"
+#define AC_LEVELS  "1000 1100 1200 1300 1400 1500"
+#define USB_LEVELS "475 600 700 800 900 1000"
+#define WIRELESS_LEVELS "475 600 700 800 900 1000"
+#define ANY_LEVELS "0 to 2100"
 
 extern int force_fast_charge;
 
