@@ -1,12 +1,16 @@
 import init.smdk4x12.usb.rc
 import init.bt.rc
+import init.carrier.rc
+import init.container.rc
 
 on early-init
     mkdir /efs 0771 radio system
+    mkdir /tombstones
 
 on init
     # See storage config details at http://source.android.com/tech/storage/
     mkdir /mnt/shell/emulated 0700 shell shell
+    mkdir /mnt/shell/container 0700 system system
     mkdir /storage/emulated 0555 root root
 
     export EXTERNAL_STORAGE /storage/emulated/legacy
@@ -18,6 +22,7 @@ on init
     symlink /storage/emulated/legacy /mnt/sdcard
     symlink /storage/emulated/legacy /storage/sdcard0
     symlink /mnt/shell/emulated/0 /storage/emulated/legacy
+    symlink /mnt/shell/container /storage/container
 
     export SECONDARY_STORAGE /storage/extSdCard
     mkdir /storage/extSdCard 0555 root root
@@ -47,7 +52,7 @@ on init
 
     # Vibetonz
     export VIBE_PIPE_PATH /dev/pipes
-    mkdir /dev/pipes 0771 system system
+    mkdir /dev/pipes 0771 system system 
 
 on post-fs-data
     # we will remap this as /storage/sdcard with the sdcard fuse tool
@@ -82,6 +87,10 @@ on post-fs-data
 
     mkdir /data/misc/radio 0775 radio system
 
+    # Waketime for fast dormancy
+    chown system radio /sys/devices/platform/mdm_hsic_pm0/waketime
+    chmod 0660 /sys/devices/platform/mdm_hsic_pm0/waketime
+
  # permissions for bluetooth.
     setprop ro.bt.bdaddr_path "/efs/bluetooth/bt_addr"
     chown bluetooth net_bt_stack ro.bt.bdaddr_path
@@ -90,6 +99,17 @@ on post-fs-data
     chmod 0660 /sys/class/rfkill/rfkill0/state
     chown bluetooth net_bt_stack /sys/class/rfkill/rfkill0/state
     chown bluetooth net_bt_stack /sys/class/rfkill/rfkill0/type
+
+# bluetooth dhcp config
+service dhcpcd_bt-pan /system/bin/dhcpcd -ABKL
+    class main
+	disabled
+	oneshot
+
+service iprenew_bt-pan /system/bin/dhcpcd -n
+    class late_start
+	disabled
+	oneshot
 
     # for TRP/TIS
     write /data/.psm.info 1
@@ -102,7 +122,19 @@ on post-fs-data
     chmod 0664 /data/.frameburst.info
     chmod 0664 /data/.txbf.info
 
+# for AT distributor
+    chown system radio /sys/module/cpuidle_exynos4/parameters/enable_mask
+    chmod 0664 /sys/module/cpuidle_exynos4/parameters/enable_mask
+
 on boot
+
+# mobicore
+    mkdir /data/app/mcRegistry 0775 system system
+    chmod 0700 /dev/mobicore
+    chmod 0666 /dev/mobicore-user
+    chown system system /dev/mobicore
+    chown radio system /dev/mobicore-user
+
 # SISO-ANDR_PERF :: START Changing scheduler to noop during boot
     write /sys/block/mmcblk0/queue/scheduler noop
 # SISO-ANDR_PERF :: END
@@ -113,10 +145,8 @@ on boot
 
 # mobicore
     mkdir /data/app/mcRegistry 0775 system system
-    chmod 0700 /dev/mobicore
-    chmod 0666 /dev/mobicore-user
-    chown system system /dev/mobicore
-    chown radio system /dev/mobicore-user
+    chmod 0660 /dev/mobicore
+    chown radio system /dev/mobicore
 
 # S.LSI secdrv mem
     chown system system /dev/s5p-smem
@@ -125,7 +155,8 @@ on boot
 # WIFI
     setprop wifi.interface wlan0
 
-    symlink /dev/block/mmcblk0p4 /dev/block/param
+#PARAM
+    symlink /dev/block/mmcblk0p7 /dev/block/param
 
 # <Sensors & NFC>
 # Input Events
@@ -161,8 +192,6 @@ on boot
     chown system radio /sys/class/sensors/proximity_sensor/name
     chown system radio /sys/class/sensors/proximity_sensor/prox_thresh
 # Light_sensor
-    chown system radio /sys/class/input/input7/enable
-    chown system radio /sys/class/input/input7/poll_delay
     chown system radio /sys/class/sensors/light_sensor/lux
     chown system radio /sys/class/sensors/light_sensor/raw_data
     chown system radio /sys/class/sensors/light_sensor/vendor
@@ -176,22 +205,20 @@ on boot
     chown system radio /sys/class/sensors/gyro_sensor/selftest_dps
     chown system radio /sys/class/sensors/gyro_sensor/vendor
     chown system radio /sys/class/sensors/gyro_sensor/name
-# Barometer_sensor
-    chown system radio /sys/class/input/input5/pressure_reference_level
-    chown system radio /sys/class/input/input5/temperature_reference_level
-    chown system radio /sys/class/input/input5/enable_autozero
-    chown system radio /sys/class/input/input5/compensation_param
-    chown system radio /sys/class/input/input5/reg_value
-    chown system radio /sys/class/input/input5/reg_addr
-    chown system radio /sys/class/sensors/barometer_sensor/sea_level_pressure
-    chown system radio /sys/class/sensors/barometer_sensor/vendor
-    chown system radio /sys/class/sensors/barometer_sensor/name
-    chown system radio /sys/class/sensors/barometer_sensor/calibration
 # Magnetic_sensor
     chown system radio /dev/akm8975
     chown system radio /sys/class/sensors/magnetic_sensor/raw_data
     chown system radio /sys/class/sensors/magnetic_sensor/vendor
     chown system radio /sys/class/sensors/magnetic_sensor/name
+# Barometer_sensor
+    chown system radio /sys/class/input/input6/pressure_reference_level
+    chown system radio /sys/class/input/input6/temperature_reference_level
+    chown system radio /sys/class/input/input6/enable_autozero
+    chown system radio /sys/class/input/input6/compensation_param
+    chown system radio /sys/class/sensors/barometer_sensor/sea_level_pressure
+    chown system radio /sys/class/sensors/barometer_sensor/vendor
+    chown system radio /sys/class/sensors/barometer_sensor/name
+    chown system radio /sys/class/sensors/barometer_sensor/calibration
 
 # GPIO DVS
     chown radio system /sys/class/secgpio_check/secgpio_check_all/check_init_detail
@@ -209,22 +236,54 @@ on boot
     chmod 0660 /dev/tspdrv
     chown system system /dev/tspdrv
 
-    write /proc/sys/vm/swappiness 130
-
 on fs
     mount_all /fstab.smdk4x12
     setprop ro.crypto.fuse_sdcard true
 
 # for LogMeIn
-    mount ext4 /dev/block/mmcblk0p9 /system rw wait noatime remount
+    mount ext4 /dev/block/mmcblk0p13 /system rw wait noatime remount
 
     chown graphics /system/bin/RescueStarter
     chmod 0755 /system/bin/RescueStarter
     chown graphics /system/bin/RescueServer
     chmod 0755 /system/bin/RescueServer
 
-    mount ext4 /dev/block/mmcblk0p9 /system ro wait noatime remount
-	
+    mount ext4 /dev/block/mmcblk0p13 /system ro wait noatime remount
+#MDM requirement
+    mkdir /data/cp_log
+    chmod 0775 /data/cp_log
+    chown system radio /data/cp_log
+    
+    mkdir /dev/block/modem
+    symlink /dev/block/platform/dw_mmc/by-name/m9kefs1 /dev/block/modem/m9kefs1
+    symlink /dev/block/platform/dw_mmc/by-name/m9kefs2 /dev/block/modem/m9kefs2
+    symlink /dev/block/platform/dw_mmc/by-name/m9kefs3 /dev/block/modem/m9kefs3
+    symlink /dev/block/platform/dw_mmc/by-name/ /dev/block/modem/dump_path
+    chown system radio /dev/block/modem/m9kefs1
+    chmod 0775 /dev/block/modem/m9kefs1
+    chown system radio /dev/block/modem/m9kefs2
+    chmod 0775 /dev/block/modem/m9kefs2
+    chown system radio /dev/block/modem/m9kefs3
+    chmod 0775 /dev/block/modem/m9kefs3
+    chown system radio /dev/block/modem/dump_path
+    chmod 0775 /dev/block/modem/dump_path
+
+    mkdir /firmware 0771 system system
+    mount vfat /dev/block/mmcblk0p10 /firmware ro shortname=lower fmask=0133,dmask=0022
+    chown system system /tombstones
+    chmod 0775 /tombstones
+    mkdir /tombstones/modem 0775 system system
+    mkdir /tombstones/lpass 0775 system system
+    mkdir /tombstones/wcnss 0775 system system
+    mkdir /tombstones/dsps 0775 system system
+    rmdir /tombstones/qcks
+    mkdir /tombstones/qcks 771 system system
+    rmdir /tombstones/efs
+    mkdir /tombstones/efs 771 system system
+
+    chown system radio /dev/block/platform/dw_mmc/by-name
+    chmod 0775 /dev/block/platform/dw_mmc/by-name
+
 # Permissions for DVFS
     chown radio system /sys/power/cpufreq_table
     chown radio system /sys/power/cpufreq_max_limit
@@ -239,21 +298,6 @@ on fs
 
 # Permissions for Gscaler log level
     chmod 0666 /sys/module/gsc/parameters/gsc_dbg
-
-
-# create data/gps for GPS daemon
-    chown root system /dev/ttySAC1
-    chmod 0660 /dev/ttySAC1
-    chown root system /sys/class/sec/gps/GPS_PWR_EN/value
-    chmod 0664 /sys/class/sec/gps/GPS_PWR_EN/value
-    chown root system /sys/class/sec/gps/GPS_nRST/value
-    chmod 0664 /sys/class/sec/gps/GPS_nRST/value
-
-# make sure data_system dir and perms are properly set.
-    mkdir /data/system 0771 system system
-    chown system system /data/system
-    mkdir /data/system/gps 0771 system system
-    chown system system /data/system/gps
 
 # Permissions for backlight
     chown system system /sys/class/backlight/panel/brightness
@@ -272,6 +316,7 @@ on fs
     chown system media_rw /sys/class/mdnie/mdnie/scenario
     chown system system /sys/class/mdnie/mdnie/accessibility
 
+
 # OTG_TEST
     chown system radio /sys/class/host_notify/usb_otg/booster
     chmod 0660 /sys/class/host_notify/usb_otg/booster
@@ -279,24 +324,52 @@ on fs
 # Switch Device
     chown system radio /sys/class/sec/switch/otg_test
     chown system radio /sys/class/sec/switch/adc
+    chown system radio /sys/class/sec/switch/apo_factory
 
-# IPC sysfs
-    chown radio radio /sys/devices/virtual/misc/multipdp/waketime
-    symlink /dev/block/mmcblk0p7 /dev/mbin0
 
 on post-fs
     chown radio system /efs
     chmod 0771 /efs
 
+on post-fs-data
+
+#QCRIL
+
+    #Create QMUX deamon socket area
+    mkdir /dev/socket/qmux_radio 0770 radio radio
+    chmod 2770 /dev/socket/qmux_radio
+    mkdir /dev/socket/qmux_audio 0770 media audio
+    chmod 2770 /dev/socket/qmux_audio
+    mkdir /dev/socket/qmux_gps 0770 gps gps
+    chmod 2770 /dev/socket/qmux_gps
+
+    # we will remap this as /storage/container with the sdcard fuse tool
+    mkdir /data/container 0770 system system
+    chown system system /data/container
+
+    # Allow QMUX daemon to assign port open wait time
+    chown radio radio /sys/devices/virtual/hsicctl/hsicctl0/modem_wait
+
+    # To prevent out of order acknowledgements from making
+    # connection tracking to treat them as not belonging to
+    # the connection they belong to.
+    # Otherwise, a weird issue happens in which some long
+    # connections on high-throughput links get dropped when
+    # an ack packet comes out of order
+    write /proc/sys/net/netfilter/nf_conntrack_tcp_be_liberal 1
 
 # SISO-ANDR_PERF :: START Changing scheduler to cfq and reseting cpu min freq to -1 after boot complete
 on property:sys.boot_completed=1
     write /sys/block/mmcblk0/queue/scheduler cfq
     write /sys/power/cpufreq_min_limit -1
+    write /proc/sys/net/ipv6/conf/rmnet_usb0/accept_ra 2
+    write /proc/sys/net/ipv6/conf/rmnet_usb1/accept_ra 2
+    write /proc/sys/net/ipv6/conf/rmnet_usb2/accept_ra 2
+    write /proc/sys/net/ipv6/conf/rmnet_usb3/accept_ra 2
 # SISO-ANDR_PERF :: END
 
 on property:persist.sys.storage_preload=1
-    mount ext4 /dev/block/mmcblk0p10 /preload nosuid nodev noatime wait ro
+    mount ext4 /dev/block/mmcblk0p14 /preload nosuid nodev noatime wait ro
     setprop storage.preload.complete 1
 
 on property:persist.sys.storage_preload=0
@@ -326,20 +399,6 @@ service setup_fs /system/bin/setup_fs \
     group root
     oneshot
 
-# RILD
-service ril-daemon /system/bin/rild
-    class main
-    socket rild stream 660 root radio
-    socket rild-debug stream 660 radio system
-    user root
-    group radio cache inet misc audio sdcard_rw log sdcard_r
-    onrestart restart cpboot-daemon
-
-service cpboot-daemon /sbin/cbd -d
-    class main
-    user root
-    group radio cache inet misc audio sdcard_rw log sdcard_r
-
 # create virtual SD card at /mnt/sdcard, based on the /data/media directory
 # daemon will drop to user/group system/media_rw after initializing
 # underlying files in /data/media will be created with user and group media_rw (1023)
@@ -347,6 +406,12 @@ service sdcard /system/bin/sdcard /data/media /mnt/shell/emulated 1023 1023
     class late_start
     oneshot
 
+# virtual sdcard daemon running as system (1000)
+service container /system/bin/sdcard /data/container /mnt/shell/container 1000 1000
+    class late_start
+    oneshot
+
+    start container
 
 #	-iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf -N \
 service p2p_supplicant /system/bin/p2p_supplicant \
@@ -386,12 +451,17 @@ service iprenew_p2p /system/bin/dhcpcd -n
     disabled
     oneshot
 
-# GPS
-service gpsd /system/bin/gpsd -c /system/etc/gps.xml
+# AT Distributor for factory test
+service at_distributor /system/bin/at_distributor
+    class late_start
+    user root
+    group radio log
+
+# diag app for cp uart
+service diag_uart_log /system/bin/diag_uart_log
     class main
-    user gps
-    group system inet net_raw
-    ioprio be 0
+    user root
+    group radio
 
 # TVout
 service TvoutService_C /system/bin/bintvoutservice
@@ -400,13 +470,9 @@ service TvoutService_C /system/bin/bintvoutservice
      group system
 on property:ro.tvout.enable=false
     stop TvoutService_C
-service cpboot-daemon /sbin/cbd -d
-    class main
-    user root
-    group radio cache inet misc audio sdcard_rw log sdcard_r
 
 # mobicore
-service mcDriverDaemon /system/bin/mcDriverDaemon -r /system/app/FFFFFFFF000000000000000000000001.drbin
+service mcDriverDaemon /system/bin/mcDriverDaemon -r /system/app/FFFFFFFF000000000000000000000001.drbin  -r /system/app/mcRegistry/ffffffffd0000000000000000000000a.tlbin
     class core
     user system
     group system
@@ -414,7 +480,7 @@ service mcDriverDaemon /system/bin/mcDriverDaemon -r /system/app/FFFFFFFF0000000
 # Vibetonz
 service immvibed /system/bin/immvibed
     class core
-    user system 
+    user system
     group system
     oneshot
 
@@ -442,6 +508,49 @@ on property:init.svc.macloader=stopped
     chmod 0660 /data/.rev
 # end of wifi
 
+#QCRIL
+service netmgrd /system/bin/netmgrd
+    class late_start
+
+service qc_kickstart /system/bin/qcks s
+    class core
+    user root
+    group radio cache inet misc audio sdcard_rw log
+
+service ril-daemon /system/bin/rild
+    class main
+    socket rild stream 660 root radio
+    socket rild-debug stream 660 radio system
+    user root
+    group radio cache inet misc audio sdcard_rw qcom_oncrpc diag log sdcard_r
+
+
+service secril-daemon /system/bin/sec-ril
+    class main
+    user root
+    group radio cache inet misc audio sdcard_rw diag log
+
+#For EncryptionMode - remove disabled, Modify class main
+service qmiproxy /system/bin/qmiproxy
+    class main
+    user radio
+    group radio gps
+
+service qmuxd /system/bin/qmuxd
+    class main
+    user root
+    group radio log audio bluetooth gps log
+
+#start GNSS/Sensor interface daemon
+service gsiff_daemon /system/bin/gsiff_daemon
+    class late_start
+    user system
+    group qcom_oncrpc gps
+
+on property:ro.use_data_netmgrd=false
+#netmgr not supported on specific target
+    stop netmgrd
+
 # for LogMeIn
     service RescueStarter /system/bin/RescueStarter
     class core
@@ -466,17 +575,6 @@ service bttestdaemon /system/bin/bttestd
     disabled
     oneshot
 
-# bluetooth dhcp config
-service dhcpcd_bt-pan /system/bin/dhcpcd -ABKL
-    class main
-    disabled
-    oneshot
-
-service iprenew_bt-pan /system/bin/dhcpcd -n
-    class late_start
-    disabled
-    oneshot
-
 # SA, System SW, SAMSUNG
 service bugreport /system/bin/bugmailer.sh -v
     class main
@@ -484,14 +582,14 @@ service bugreport /system/bin/bugmailer.sh -v
     oneshot
     keycodes 114 115 116
 
+service ipruleset /system/bin/ipruleset
+    class main
+    group vpn net_admin inet net_raw
+	disabled
+    oneshot
+
 on property:ro.dumpstate.dmesg=1
     write /proc/sys/kernel/dmesg_restrict 0
-
-# Runtime Compcache
-#service rtccd /system/bin/rtccd2 -a 300M
-#    class core
-#    user root
-#    oneshot
 
 # Secure Storage startup
 service prepare-ssdaemon /system/bin/sh /system/bin/ss-presetup.sh
