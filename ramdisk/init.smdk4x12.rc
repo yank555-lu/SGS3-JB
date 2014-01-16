@@ -103,6 +103,10 @@ on post-fs-data
     chmod 0664 /data/.txbf.info
 
 on boot
+# RTCC Swappiness
+# Yank555.lu : No swappiness and no swap here !
+# write /proc/sys/vm/swappiness 100
+
 # SISO-ANDR_PERF :: START Changing scheduler to noop during boot
     write /sys/block/mmcblk0/queue/scheduler noop
 # SISO-ANDR_PERF :: END
@@ -110,6 +114,7 @@ on boot
     setprop ro.build.product smdk4x12
     setprop ro.product.device smdk4x12
     # setprop ro.radio.noril yes
+setprop ro.securestorage.knox true
 
 # mobicore
     mkdir /data/app/mcRegistry 0775 system system
@@ -477,36 +482,39 @@ service iprenew_bt-pan /system/bin/dhcpcd -n
     disabled
     oneshot
 
-# SA, System SW, SAMSUNG
-service bugreport /system/bin/bugmailer.sh -v
-    class main
-    disabled
-    oneshot
-    keycodes 114 115 116
-
 on property:ro.dumpstate.dmesg=1
     write /proc/sys/kernel/dmesg_restrict 0
 
 # Runtime Compcache
+# Yank555.lu : No swappiness and no swap here !
 #service rtccd /system/bin/rtccd2 -a 300M
 #    class core
 #    user root
 #    oneshot
 
 # Secure Storage startup
-service prepare-ssdaemon /system/bin/sh /system/bin/ss-presetup.sh
-    class core
-    user root
-    group root
-    oneshot
-
 service secure_storage /system/bin/secure_storage_daemon
     class core
     user system
     group system
     disabled
 
-on property:ro.securestorage.ready=true
+# bugreport 
+service bugreport /system/bin/dumpstate -d -p -B \
+                -o /data/data/com.android.shell/files/bugreports/bugreport
+    class main
+    disabled
+    oneshot
+#   keycodes 114 115 116
+
+# symlink to bugreport storage location
+symlink /data/data/com.android.shell/files/bugreports /data/bugreports
+
+on property:ro.securestorage.knox=true
+    mkdir /dev/.secure_storage
+    chmod 0711 /dev/.secure_storage
+    chown system system /dev/.secure_storage
+    restorecon -R /dev/.secure_storage
     start secure_storage
 
 # service for TZPR provisioning version check app
